@@ -1033,6 +1033,13 @@ public class BankResizerPlugin extends Plugin
 	 * the entries come out 252 wide on a 204 pitch and overlap by 48px. At the
 	 * vanilla 425 the two agree, which is why an unmodified client never shows it.
 	 *
+	 * Known gap, to revisit: stepping the column count down to 8 and back up with
+	 * the store as the last open tab still leaves entries misaligned until the
+	 * store itself is reopened. Reopening the bank does not clear it. The offsets
+	 * agreed on by most entries are what gets applied, so a store that is mostly
+	 * wrong agrees on the wrong answer, and nothing in a bank rebuild makes the
+	 * game relay the store to break the tie.
+	 *
 	 * Nothing here trusts an entry to be where it was left. The store's widgets
 	 * outlive the bank closing, the game relays some of them on its own schedule,
 	 * and another plugin may reorder them, so an entry can be found part way
