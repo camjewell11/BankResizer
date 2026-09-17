@@ -52,18 +52,30 @@ final class BankRoom
 	/** Ancestors with an absolute width, which have to be widened by hand. */
 	private final List<Widget> slots;
 
+	/**
+	 * The bank window and every ancestor in play, innermost first. Callers resize
+	 * in reverse so that a parent is sized before its children recompute from it.
+	 */
+	private final List<Widget> chain;
+
 	/** Widest the bank window may become before an ancestor would clip it. */
 	private final int limit;
 
-	private BankRoom(List<Widget> slots, int limit)
+	private BankRoom(List<Widget> slots, List<Widget> chain, int limit)
 	{
 		this.slots = slots;
+		this.chain = chain;
 		this.limit = limit;
 	}
 
 	List<Widget> getSlots()
 	{
 		return slots;
+	}
+
+	List<Widget> getChain()
+	{
+		return chain;
 	}
 
 	int getLimit()
@@ -81,7 +93,7 @@ final class BankRoom
 	{
 		if (window == null || canvasWidth <= 0)
 		{
-			return new BankRoom(Collections.emptyList(), 0);
+			return new BankRoom(Collections.emptyList(), Collections.emptyList(), 0);
 		}
 
 		List<Widget> chain = new ArrayList<>();
@@ -128,7 +140,7 @@ final class BankRoom
 			limit = window.getWidth();
 		}
 
-		return new BankRoom(slots, limit);
+		return new BankRoom(slots, chain.subList(0, end), limit);
 	}
 
 	/** Guards against a malformed tree sending the walk into a long loop. */

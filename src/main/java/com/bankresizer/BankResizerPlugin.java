@@ -18,6 +18,7 @@ package com.bankresizer;
 
 import com.google.inject.Provides;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -438,10 +439,31 @@ public class BankResizerPlugin extends Plugin
 	{
 		// The bank window and every fixed-width ancestor holding it. Widening the
 		// window alone leaves it inside a 512 wide slot that clips it.
+		//
+		// Outermost first, because revalidate() recomputes only the widget it is
+		// called on. Resizing bottom up left the ancestors between the slot and the
+		// window still laid out against the old width.
 		Widget root = client.getWidget(InterfaceID.Bankmain.UNIVERSE);
-		for (Widget slot : BankRoom.measure(root, client.getCanvasWidth()).getSlots())
+		List<Widget> chain = BankRoom.measure(root, client.getCanvasWidth()).getChain();
+		for (int i = chain.size() - 1; i >= 0; i--)
 		{
-			setWidth(slot, originalWidthOf(slot) + delta);
+			Widget node = chain.get(i);
+			if (node.getWidthMode() == WidgetSizeMode.ABSOLUTE)
+			{
+				node.setOriginalWidth(originalWidthOf(node) + delta);
+			}
+
+			// Tracking ancestors keep their inset but still have to recompute
+			// against the parent we just resized.
+			node.revalidate();
+		}
+
+		// Refresh the bank's own group so its inner chrome picks up the new window
+		// width. These are children of the window, so the walk above did not reach
+		// them.
+		if (root != null)
+		{
+			root.revalidateScroll();
 		}
 
 		for (int componentId : WIDTH_TRACKING)
