@@ -112,6 +112,11 @@ public class BankResizerPlugin extends Plugin
 	/** Whether the geometry dump has already run for the current interface load. */
 	private boolean loggedGeometry;
 
+	/** Column count and canvas width of the last layout actually applied. */
+	private int appliedColumns = -1;
+
+	private int appliedCanvasWidth = -1;
+
 	@Provides
 	BankResizerConfig provideConfig(ConfigManager configManager)
 	{
@@ -206,6 +211,13 @@ public class BankResizerPlugin extends Plugin
 		}
 
 		int targetWidth = BankLayout.containerWidthFor(columns);
+		int canvasWidth = client.getCanvasWidth();
+
+		if (isUpToDate(items, columns, canvasWidth, targetWidth))
+		{
+			return;
+		}
+
 		int delta = targetWidth - BankLayout.VANILLA_CONTAINER_WIDTH;
 
 		log.debug("Laying out bank at {} columns, container width {} (delta {})",
@@ -215,7 +227,30 @@ public class BankResizerPlugin extends Plugin
 		resizeChrome(delta);
 		setWidth(items, targetWidth);
 		layoutItems(items, columns, targetWidth);
+
 		modified = true;
+		appliedColumns = columns;
+		appliedCanvasWidth = canvasWidth;
+	}
+
+	/**
+	 * Whether the bank already carries the layout we would apply, in which case
+	 * there is nothing to do.
+	 *
+	 * This is what keeps the plugin off the hot path. The layout hooks fire on
+	 * every client tick while the bank is open, and without this guard the plugin
+	 * relaid 816 widgets and ran a script fifty times a second.
+	 *
+	 * The item container width is the reliable signal. [proc,bankmain_build]
+	 * assigns it an absolute 460 on every rebuild, so seeing our own target width
+	 * there proves no rebuild has happened since we last ran.
+	 */
+	private boolean isUpToDate(Widget items, int columns, int canvasWidth, int targetWidth)
+	{
+		return modified
+			&& columns == appliedColumns
+			&& canvasWidth == appliedCanvasWidth
+			&& items.getOriginalWidth() == targetWidth;
 	}
 
 	/** Restores every widened widget and puts the grid back to vanilla columns. */
@@ -486,6 +521,8 @@ public class BankResizerPlugin extends Plugin
 		originalWidths.clear();
 		modified = false;
 		loggedGeometry = false;
+		appliedColumns = -1;
+		appliedCanvasWidth = -1;
 	}
 
 	/** Width the widget had before this plugin first touched it. */
