@@ -21,7 +21,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
@@ -152,28 +151,6 @@ public class BankResizerPlugin extends Plugin
 	 * our own work if the user turns the column count back down.
 	 */
 	private boolean modified;
-
-	private boolean loggedGeometry;
-
-	/** Cell sizes last dumped, so a view is recorded when its shape changes. */
-	private String loggedShape;
-
-	/** Geometry of the potion store last dumped, for the same reason. */
-	private String loggedPotionShape;
-
-
-	/** Cost of laying out, accumulated between timing reports. */
-	private int passes;
-
-	private long totalNanos;
-
-	private long worstNanos;
-
-	private int movedWidgets;
-
-	private long totalMoved;
-
-	private long windowStartedNanos;
 
 	/** Column count asked for when the bank was opened, held until it closes. */
 	private int latchedColumns = -1;
@@ -339,16 +316,8 @@ public class BankResizerPlugin extends Plugin
 		}
 
 		int delta = targetWidth - BankLayout.VANILLA_CONTAINER_WIDTH;
-		long startedNanos = System.nanoTime();
 
-		log.debug("Laying out bank at {} columns, container width {} (delta {}), because {}",
-			columns, targetWidth, delta, staleReason(items, columns, canvasWidth, targetWidth));
-
-		boolean dump = log.isDebugEnabled() && !loggedGeometry;
-		if (dump)
-		{
-			logGeometry("before");
-		}
+		log.debug("Laying out bank at {} columns, container width {}", columns, targetWidth);
 
 		// Before resizeChrome, and it has to stay that way.
 		pinTabsLeft(delta);
@@ -365,19 +334,6 @@ public class BankResizerPlugin extends Plugin
 			layoutItems(items, columns, targetWidth);
 		}
 
-		if (dump)
-		{
-			logGeometry("after");
-			loggedGeometry = true;
-		}
-
-		if (log.isDebugEnabled())
-		{
-			logPotionStore();
-		}
-
-		recordPass(System.nanoTime() - startedNanos);
-
 		modified = true;
 		appliedColumns = columns;
 		appliedCanvasWidth = canvasWidth;
@@ -391,40 +347,10 @@ public class BankResizerPlugin extends Plugin
 	 */
 	private boolean isUpToDate(Widget items, int columns, int canvasWidth, int targetWidth)
 	{
-		return staleReason(items, columns, canvasWidth, targetWidth) == null;
-	}
-
-	/** Why the layout has to be applied again, or null when it does not. */
-	private String staleReason(Widget items, int columns, int canvasWidth, int targetWidth)
-	{
-		if (!modified)
-		{
-			return "nothing applied yet";
-		}
-
-		if (columns != appliedColumns)
-		{
-			return "columns changed from " + appliedColumns + " to " + columns;
-		}
-
-		if (canvasWidth != appliedCanvasWidth)
-		{
-			return "canvas changed from " + appliedCanvasWidth + " to " + canvasWidth;
-		}
-
-		if (client.getCanvasHeight() != appliedCanvasHeight)
-		{
-			return "canvas height changed from " + appliedCanvasHeight
-				+ " to " + client.getCanvasHeight();
-		}
-
-		if (items.getOriginalWidth() != targetWidth)
-		{
-			return "the game rebuilt the item container, its width is "
-				+ items.getOriginalWidth() + " not " + targetWidth;
-		}
-
-		return null;
+		return modified
+			&& columns == appliedColumns
+			&& canvasWidth == appliedCanvasWidth
+			&& items.getOriginalWidth() == targetWidth;
 	}
 
 	private void restoreLayout()
@@ -472,8 +398,6 @@ public class BankResizerPlugin extends Plugin
 			if (child.getOriginalWidth() == BankLayout.COLUMN_PITCH
 				&& child.getOriginalHeight() == BankLayout.ROW_PITCH)
 			{
-				log.debug("Padded {}x{} cell found; another plugin owns this view",
-					child.getOriginalWidth(), child.getOriginalHeight());
 				return true;
 			}
 		}
@@ -529,131 +453,6 @@ public class BankResizerPlugin extends Plugin
 		}
 
 		return chrome;
-	}
-
-	/** Dumps the geometry this plugin depends on. Debug only. */
-	private void logGeometry(String phase)
-	{
-		log.debug("--- bank geometry [{}] canvas {}x{}",
-			phase, client.getCanvasWidth(), client.getCanvasHeight());
-		logParentChain();
-		logBankChildren();
-		logWidget("UNIVERSE", InterfaceID.Bankmain.UNIVERSE);
-		logWidget("FRAME", InterfaceID.Bankmain.FRAME);
-		logWidget("ITEMS_CONTAINER", InterfaceID.Bankmain.ITEMS_CONTAINER);
-		logWidget("ITEMS", InterfaceID.Bankmain.ITEMS);
-		logWidget("TABS", InterfaceID.Bankmain.TABS);
-		logChildrenOf("tabs", client.getWidget(InterfaceID.Bankmain.TABS));
-		logWidget("BOTTOM", InterfaceID.Bankmain.BOTTOM);
-		logWidget("SCROLLBAR", InterfaceID.Bankmain.SCROLLBAR);
-	}
-
-	/**
-	 * Walks from the bank window up to the root of the interface tree. This
-	 * is the measurement that decides whether widening the bank window can
-	 * work at all.
-	 */
-	private void logParentChain()
-	{
-		Widget widget = client.getWidget(InterfaceID.Bankmain.UNIVERSE);
-		if (widget == null)
-		{
-			log.debug("  parent chain: UNIVERSE is null");
-			return;
-		}
-
-		int depth = 0;
-		for (Widget node = widget; node != null && depth < 12; node = node.getParent(), depth++)
-		{
-			log.debug("  chain[{}]: id={} group={} child={} origW={} w={} h={} x={} canvasX={} wMode={} xMode={}",
-				depth,
-				node.getId(),
-				node.getId() >>> 16,
-				node.getId() & 0xFFFF,
-				node.getOriginalWidth(),
-				node.getWidth(),
-				node.getHeight(),
-				node.getRelativeX(),
-				node.getCanvasLocation() == null ? -1 : node.getCanvasLocation().getX(),
-				node.getWidthMode(),
-				node.getXPositionMode());
-		}
-	}
-
-	/** Dumps the bank's own buttons and panels. Debug only. */
-	private void logBankChildren()
-	{
-		Widget window = client.getWidget(InterfaceID.Bankmain.UNIVERSE);
-		if (window == null)
-		{
-			return;
-		}
-
-		logChildrenOf("window", window);
-
-		Widget bottom = client.getWidget(InterfaceID.Bankmain.BOTTOM);
-		if (bottom != null)
-		{
-			logChildrenOf("bottom", bottom);
-		}
-	}
-
-	private void logChildrenOf(String label, Widget parent)
-	{
-		if (parent == null)
-		{
-			log.debug("  {}: null", label);
-			return;
-		}
-
-		Widget[] children = parent.getStaticChildren();
-		if (children == null)
-		{
-			log.debug("  {}: no static children", label);
-			return;
-		}
-
-		log.debug("  {} has {} children, parent w={}", label, children.length, parent.getWidth());
-		for (Widget child : children)
-		{
-			if (child == null || child.isSelfHidden())
-			{
-				continue;
-			}
-
-			log.debug("    {}[{}]: w={} h={} x={} y={} wMode={} xMode={} type={} text={}",
-				label,
-				child.getId() & 0xFFFF,
-				child.getWidth(),
-				child.getHeight(),
-				child.getRelativeX(),
-				child.getRelativeY(),
-				child.getWidthMode(),
-				child.getXPositionMode(),
-				child.getType(),
-				child.getText() == null ? "" : child.getText());
-		}
-	}
-
-	private void logWidget(String label, int componentId)
-	{
-		Widget widget = client.getWidget(componentId);
-		if (widget == null)
-		{
-			log.debug("  {}: null", label);
-			return;
-		}
-
-		log.debug("  {}: origW={} w={} origX={} x={} canvasX={} wMode={} xMode={} hidden={}",
-			label,
-			widget.getOriginalWidth(),
-			widget.getWidth(),
-			widget.getOriginalX(),
-			widget.getRelativeX(),
-			widget.getCanvasLocation() == null ? -1 : widget.getCanvasLocation().getX(),
-			widget.getWidthMode(),
-			widget.getXPositionMode(),
-			widget.isHidden());
 	}
 
 	/**
@@ -738,8 +537,6 @@ public class BankResizerPlugin extends Plugin
 
 			if (widget.getWidthMode() != WidgetSizeMode.ABSOLUTE)
 			{
-				log.debug("Skipping widget {} with width mode {}",
-					componentId, widget.getWidthMode());
 				continue;
 			}
 
@@ -802,40 +599,6 @@ public class BankResizerPlugin extends Plugin
 			child.setOriginalX(size.originalX + delta);
 			child.revalidate();
 		}
-	}
-
-	private void recordPass(long nanos)
-	{
-		if (passes == 0)
-		{
-			windowStartedNanos = System.nanoTime();
-		}
-
-		passes++;
-		totalNanos += nanos;
-		totalMoved += movedWidgets;
-		worstNanos = Math.max(worstNanos, nanos);
-
-		if (passes < 25)
-		{
-			return;
-		}
-
-		long elapsed = Math.max(1L, System.nanoTime() - windowStartedNanos);
-
-		log.debug("Bank Resizer: {} passes in {} ms, {} us each on average, worst {} us,"
-				+ " {} widgets per pass, {}% of wall clock",
-			passes,
-			elapsed / 1_000_000,
-			totalNanos / passes / 1_000,
-			worstNanos / 1_000,
-			totalMoved / passes,
-			String.format("%.2f", 100.0 * totalNanos / elapsed));
-
-		passes = 0;
-		totalNanos = 0;
-		worstNanos = 0;
-		totalMoved = 0;
 	}
 
 	private void spreadPotionEntries()
@@ -1043,143 +806,6 @@ public class BankResizerPlugin extends Plugin
 		return 0;
 	}
 
-	private void logPotionStore()
-	{
-		Widget items = client.getWidget(InterfaceID.Bankmain.POTIONSTORE_ITEMS);
-		if (items == null || items.isHidden())
-		{
-			return;
-		}
-
-		StringBuilder shape = new StringBuilder();
-		int[] parts = {
-			InterfaceID.Bankmain.POTIONSTORE_CONTAINER,
-			InterfaceID.Bankmain.POTIONSTORE_BACKGROUND,
-			InterfaceID.Bankmain.POTIONSTORE_ITEMS,
-			InterfaceID.Bankmain.POTIONSTORE_SCROLLBAR,
-		};
-
-		for (int part : parts)
-		{
-			Widget widget = client.getWidget(part);
-			if (widget == null)
-			{
-				continue;
-			}
-
-			shape.append(String.format(" [%d origW=%d w=%d origX=%d x=%d wMode=%d xMode=%d]",
-				part & 0xffff, widget.getOriginalWidth(), widget.getWidth(),
-				widget.getOriginalX(), widget.getRelativeX(),
-				widget.getWidthMode(), widget.getXPositionMode()));
-		}
-
-		Widget[] children = items.getDynamicChildren();
-		if (children != null)
-		{
-			int shown = 0;
-			StringBuilder tall = new StringBuilder();
-
-			for (Widget child : children)
-			{
-				if (child == null || child.isSelfHidden())
-				{
-					continue;
-				}
-
-				if (child.getOriginalHeight() > BankLayout.ROW_PITCH)
-				{
-					tall.append(String.format(" [%dx%d x=%d y=%d type=%d]",
-						child.getOriginalWidth(), child.getOriginalHeight(),
-						child.getOriginalX(), child.getOriginalY(), child.getType()));
-					continue;
-				}
-
-				if (shown++ < 8)
-				{
-					shape.append(String.format(" child[%dx%d x=%d y=%d type=%d]",
-						child.getOriginalWidth(), child.getOriginalHeight(),
-						child.getOriginalX(), child.getOriginalY(), child.getType()));
-				}
-			}
-
-			shape.append(" taller than a row:").append(tall.length() == 0 ? " none" : tall);
-		}
-
-		String text = shape.toString();
-		if (!text.equals(loggedPotionShape))
-		{
-			loggedPotionShape = text;
-			log.debug("potion store:{}", text);
-		}
-	}
-
-	/** Dumps what the item container holds. Debug only. */
-	private void logItemChildren(Widget[] children)
-	{
-		int visible = 0;
-		int hidden = 0;
-		StringBuilder shorts = new StringBuilder();
-		StringBuilder first = new StringBuilder();
-
-		// Every distinct size, counted. Sampling only the first few cells is what
-		// let a stray size in a plain bank go unnoticed and trip the ownership
-		// check on an ordinary tab.
-		Map<String, Integer> sizes = new TreeMap<>();
-
-		for (int i = 0; i < children.length; i++)
-		{
-			Widget child = children[i];
-			if (child == null)
-			{
-				continue;
-			}
-
-			if (child.isSelfHidden())
-			{
-				hidden++;
-				continue;
-			}
-
-			visible++;
-
-			// Rules are keyed by height alone. This plugin stretches them, so
-			// keying them by width made the shape flip between the game's value
-			// and ours on alternate passes and dumped the view twice over.
-			sizes.merge(child.getOriginalHeight() < ITEM_CELL_HEIGHT
-				? "rule h" + child.getOriginalHeight()
-				: child.getOriginalWidth() + "x" + child.getOriginalHeight(), 1, Integer::sum);
-
-			if (child.getOriginalWidth() != BankLayout.ITEM_WIDTH)
-			{
-				// Everything that is not an ordinary cell, with its item id, which
-				// is what tells a double width item from a heading. Guessing that
-				// from the width alone is what put a wide cell on a row of its own.
-				shorts.append(String.format(" [%d %dx%d item=%d x=%d y=%d type=%d text=%s]",
-					i, child.getOriginalWidth(), child.getOriginalHeight(), child.getItemId(),
-					child.getOriginalX(), child.getOriginalY(), child.getType(), child.getText()));
-			}
-			else if (visible <= 6)
-			{
-				first.append(String.format(" [%d item=%d h=%d w=%d x=%d y=%d]",
-					i, child.getItemId(), child.getOriginalHeight(), child.getOriginalWidth(),
-					child.getOriginalX(), child.getOriginalY()));
-			}
-		}
-
-		String shape = sizes.toString();
-		if (shape.equals(loggedShape))
-		{
-			return;
-		}
-
-		loggedShape = shape;
-
-		log.debug("item container: {} children, {} visible, {} hidden", children.length, visible, hidden);
-		log.debug("  first visible:{}", first.length() == 0 ? " none" : first.toString());
-		log.debug("  not an ordinary cell:{}", shorts.length() == 0 ? " none" : shorts.toString());
-		log.debug("  cell sizes: {}", shape);
-	}
-
 	/**
 	 * Repositions every visible item using the same formula the game script
 	 * uses, then resizes the scroll region to match and rebuilds the
@@ -1191,11 +817,6 @@ public class BankResizerPlugin extends Plugin
 		if (children == null)
 		{
 			return;
-		}
-
-		if (log.isDebugEnabled())
-		{
-			logItemChildren(children);
 		}
 
 		List<Widget> visible = new ArrayList<>();
@@ -1261,8 +882,6 @@ public class BankResizerPlugin extends Plugin
 			child.revalidate();
 		}
 
-		movedWidgets = plan.getCells().size();
-
 		applyScroll(items, plan.getHeight() == 0 ? 0 : plan.getHeight() + BankLayout.SCROLL_PADDING);
 	}
 
@@ -1324,9 +943,6 @@ public class BankResizerPlugin extends Plugin
 		originalWidths.clear();
 		resizedAncestors.clear();
 		modified = false;
-		loggedGeometry = false;
-		loggedShape = null;
-		loggedPotionShape = null;
 		latchedColumns = -1;
 		appliedColumns = -1;
 		appliedCanvasWidth = -1;
