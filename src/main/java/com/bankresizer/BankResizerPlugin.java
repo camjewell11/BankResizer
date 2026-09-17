@@ -125,6 +125,8 @@ public class BankResizerPlugin extends Plugin
 
 		private final int heightMode;
 
+		private final int renderedHeight;
+
 		private WidgetSize(Widget widget)
 		{
 			this.originalWidth = widget.getOriginalWidth();
@@ -132,6 +134,7 @@ public class BankResizerPlugin extends Plugin
 			this.renderedWidth = widget.getWidth();
 			this.originalHeight = widget.getOriginalHeight();
 			this.heightMode = widget.getHeightMode();
+			this.renderedHeight = widget.getHeight();
 		}
 	}
 
@@ -161,7 +164,7 @@ public class BankResizerPlugin extends Plugin
 	@Override
 	protected void startUp() throws Exception
 	{
-		clientThread.invokeLater(this::applyLayout);
+		clientThread.invokeLater(() -> applyLayout(true));
 	}
 
 	@Override
@@ -179,10 +182,17 @@ public class BankResizerPlugin extends Plugin
 	{
 		// bankmain_build calls bankmain_finishbuilding as its final statement, so
 		// by the time this fires the vanilla layout and scroll size are settled.
-		if (event.getScriptId() == ScriptID.BANKMAIN_BUILD
-			|| event.getScriptId() == ScriptID.BANKMAIN_SIZE_CHECK)
+		if (event.getScriptId() == ScriptID.BANKMAIN_BUILD)
 		{
-			applyLayout();
+			applyLayout(true);
+		}
+		else if (event.getScriptId() == ScriptID.BANKMAIN_SIZE_CHECK)
+		{
+			// Width only. bankmain_size_check recomputes the bank window's height
+			// every tick while the bank is open, so re-asserting a row count here
+			// just fights the client: we set the height, it sets it back, both
+			// every frame.
+			applyLayout(false);
 		}
 	}
 
@@ -194,7 +204,7 @@ public class BankResizerPlugin extends Plugin
 			return;
 		}
 
-		clientThread.invokeLater(this::applyLayout);
+		clientThread.invokeLater(() -> applyLayout(true));
 	}
 
 	@Subscribe
@@ -224,7 +234,7 @@ public class BankResizerPlugin extends Plugin
 	 * already drawn that layout correctly, so the plugin stays invisible until
 	 * the user actually asks for more columns.
 	 */
-	private void applyLayout()
+	private void applyLayout(boolean applyHeight)
 	{
 		Widget items = client.getWidget(InterfaceID.Bankmain.ITEMS);
 		if (items == null || items.isHidden())
@@ -269,7 +279,11 @@ public class BankResizerPlugin extends Plugin
 		}
 
 		resizeChrome(delta);
-		applyRows();
+		if (applyHeight)
+		{
+			applyRows();
+		}
+
 		setWidth(items, targetWidth);
 		layoutItems(items, columns, targetWidth);
 
@@ -537,10 +551,28 @@ public class BankResizerPlugin extends Plugin
 
 			if (delta == 0)
 			{
-				node.setWidthMode(size.widthMode);
-				node.setOriginalWidth(size.originalWidth);
-				node.setHeightMode(size.heightMode);
-				node.setOriginalHeight(size.originalHeight);
+				if (i == 0)
+				{
+					// The bank window resolves correctly, so it can have its real
+					// mode back and go on tracking the window vertically.
+					node.setWidthMode(size.widthMode);
+					node.setOriginalWidth(size.originalWidth);
+					node.setHeightMode(size.heightMode);
+					node.setOriginalHeight(size.originalHeight);
+				}
+				else
+				{
+					// Ancestors cannot be restored by mode. Handing back the stored
+					// inset and revalidating is what blew the interface root up to
+					// the full canvas in the first place, so put the measured pixels
+					// back instead. The client rebuilds these with their own modes
+					// when the interface next opens.
+					node.setWidthMode(WidgetSizeMode.ABSOLUTE);
+					node.setOriginalWidth(size.renderedWidth);
+					node.setHeightMode(WidgetSizeMode.ABSOLUTE);
+					node.setOriginalHeight(size.renderedHeight);
+				}
+
 				node.revalidate();
 				continue;
 			}
