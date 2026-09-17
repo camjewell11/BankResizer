@@ -27,33 +27,40 @@ public interface BankResizerConfig extends Config
 	String GROUP = "bankresizer";
 
 	@ConfigItem(
-		keyName = "fitToWidth",
-		name = "Fit to window width",
-		description = "Use as many columns as fit in the client window. Overrides the column count below.",
+		keyName = "columns",
+		name = "Columns (8 or more)",
+		description = "Items per row in the bank, minimum 8."
+			+ "<br><br>8 is the normal game layout and leaves the bank untouched."
+			+ "<br><br>Takes effect the next time you open the bank."
+			+ "<br><br>Capped to whatever fits in your client window, so asking for"
+			+ " more than there is room for gives you as many as fit."
+			+ "<br><br>Tabs with a saved bank tag layout keep their own 8 column"
+			+ " arrangement, so that the items stay where you put them.",
 		position = 0
 	)
-	default boolean fitToWidth()
-	{
-		return false;
-	}
-
 	@Range(
 		min = BankLayout.VANILLA_COLUMNS,
 		max = 24
-	)
-	@ConfigItem(
-		keyName = "columns",
-		name = "Columns",
-		description = "Items per row in the bank. Capped at whatever fits in your client window."
-			+ " 8 is the unmodified game layout, and leaves the bank untouched."
-			+ " Tabs with a saved bank tag layout keep their own 8 column arrangement,"
-			+ " so that the items stay where you put them.",
-		position = 1
 	)
 	default int columns()
 	{
 		// Defaults to the unmodified game layout so that installing the plugin
 		// changes nothing until the user asks for it.
 		return BankLayout.VANILLA_COLUMNS;
+	}
+
+	@ConfigItem(
+		keyName = "fitToWidth",
+		name = "Fit to window width",
+		description = "Use as many columns as fit in your client window,"
+			+ " ignoring the column count above."
+			+ "<br><br>Takes effect the next time you open the bank."
+			+ "<br><br>Resizing the client returns the bank to 8 columns until you"
+			+ " reopen it, when it is fitted to the new size.",
+		position = 1
+	)
+	default boolean fitToWidth()
+	{
+		return false;
 	}
 }

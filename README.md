@@ -1,96 +1,64 @@
 # Bank Resizer
 
-A RuneLite plugin that widens the Old School RuneScape bank interface so it shows
-more columns of items.
+Widens the bank so it shows more columns of items.
 
-The bank already grows taller with the client window, because the game lays its
-item container out with a height of `parent - 81`. It never grows wider, because
-that same layout step fixes the width at an absolute 460 pixels.
+The bank already grows taller with your client window, but never wider — it stays
+eight items across no matter how much room there is. This plugin lets you choose
+how many columns it uses, so a larger client window means less scrolling.
 
-This plugin changes the width, in whole columns, and leaves item icons at their
-normal size. Height is left to the game, which already handles it.
+Item icons stay their normal size, and spacing between them stays exactly as the
+game draws it. Only the number of columns changes.
 
-## Configuration
+## Using it
 
-| Setting | Default | Effect |
+Set **Columns** to the number of items you want per row. That's it.
+
+The plugin does nothing until you change that setting. At 8 columns — the
+default — it leaves the bank completely alone, so installing it changes nothing
+until you ask for more.
+
+**Changes apply the next time you open the bank.** Setting the column count
+while the bank is open would leave it half redrawn, so the new value waits for
+the next open. Close the bank and open it again to see it.
+
+### Settings
+
+| Setting | Default | What it does |
 | --- | --- | --- |
-| Fit to window width | off | Use as many columns as the play area allows. Overrides the column count. |
-| Columns | 8 | Items per row. 8 is the unmodified game layout. |
+| Columns | 8 | Items per row. 8 is the normal game layout. |
+| Fit to window width | off | Use as many columns as fit. Ignores the column count above. |
 
-The width is capped by the play area rather than the whole canvas. That area is
-the game viewport with the side panel and the chatbox excluded, measured from the
-widget tree rather than assumed, so a wider bank never runs out across the
-inventory.
+Eight is the minimum. The bank is never made narrower than the game draws it.
 
-The plugin ships doing nothing. At 8 columns it touches no widget at all, because
-the game has already drawn that layout correctly, so installing it changes
-nothing until you raise the column count. Turning the count back down to 8 undoes
-its own changes and then goes idle again.
+The maximum depends on your client window: the bank will not grow past the edge
+of the game area, and the count is capped to whatever actually fits. Asking for
+more columns than there is room for simply gives you as many as fit.
 
-In fixed mode the game area is only 765 pixels wide, so expect few or no extra
-columns there. Resizable mode is where this plugin is useful.
+In fixed mode there is very little spare room, so expect one or two extra columns
+at most. Resizable mode is where this is worth using.
 
-## How it works
+## What to expect
 
-The game builds the bank in client script 277, `[proc,bankmain_build]`. Three
-lines of that script decide the grid:
+**Resizing your client** puts the bank back to 8 columns until you next open it.
+Everything the plugin measured belongs to the old window size, so it steps out of
+the way rather than risk leaving the bank in a broken state. Reopen the bank and
+your column count returns, fitted to the new size.
 
-```
-def_int $int22 = calc(8 - 1);                               // columns - 1
-def_int $int23 = calc(if_getwidth($component2) - 51 - 35);  // usable width
-def_int $int24 = calc(($int23 - 8 * 36) / $int22);          // horizontal padding
-cc_setposition(calc(51 + $int34 * (36 + $int24)), calc($int35 * 36), ...)
-```
+**Bank tag layouts and Inventory Setups** arrange bank items themselves. When one
+of those is showing, the bank frame still widens but the items keep the
+arrangement you gave them, at their usual 8 columns. Dragging items into the
+extra columns is not possible, because those layouts store positions on a fixed
+eight-per-row grid that the plugin cannot change.
 
-The column count is a hardcoded local, so it cannot be overridden by passing
-different arguments to the script. Widening the container alone does not add
-columns either. It only makes the padding term larger, spreading the same eight
-items further apart.
+**Everything else in the bank** — tabs, the "view all items" tab and its
+separators, the potion store, group storage, the buttons along the bottom —
+keeps working and stays where it belongs as the bank widens.
 
-So the plugin lets the script run, then lays the grid out again using the same
-formula with a different column count. That keeps spacing identical to vanilla at
-every width. Script 277 calls `[proc,bankmain_finishbuilding]` as its final
-statement, so one hook on the build script completing is enough to run after both
-the layout and the scroll size have settled.
+## Compatibility
 
-Widths are always assigned as a captured original plus a delta, never accumulated,
-because the outer frame is sized once when the interface initialises while the
-item container is resized on every rebuild.
-
-The scrollbar rebuild is deferred with `clientThread.invokeLater`. The layout runs
-from a script event, so the script VM is still on the stack, and calling back into
-it directly throws `scripts are not reentrant` and takes the client down.
-
-## Building
-
-Requires JDK 11 or newer. The compile target is Java 11 to match the client.
-
-```
-./gradlew build      # compile and run unit tests
-./gradlew run        # launch a developer-mode client with the plugin loaded
-```
-
-The geometry lives in `BankLayout` and the ancestor rule in `BankChainPlan`, both
-isolated from the client API so they can be unit tested directly. Between them
-they pin the behaviour to the game script and to a chain measured on a live
-client, and are the thing that should fail first if Jagex changes the bank.
-
-## Status
-
-Width works, and the maths and ancestor rule are covered by tests. Open: some of
-the bank's own buttons are positioned at fixed offsets by the game's layout
-script, so they keep their place instead of tracking the right edge when the
-window grows. Tab separator placement is also approximate. Enable debug logging
-for a dump of the widget geometry and of every bank button with its position
-mode.
-
-## Compliance
-
-Jagex's third party client guidelines prohibit moving or resizing click zones for
-3D components, and for the combat options, inventory, worn equipment, spellbook
-and prayer book interfaces. The bank is not among them, and the Plugin Hub
-already carries plugins that resize the bank and the chatbox. This plugin does
-not automate anything, send input, or make network calls.
+Tested alongside bank tags, bank tag layouts, Inventory Setups, potion storage
+customisation and group storage. No automation, no input is sent, and nothing is
+sent over the network.
 
 ## License
 
