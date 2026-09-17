@@ -45,7 +45,9 @@ public interface BankResizerConfig extends Config
 		keyName = "columns",
 		name = "Columns",
 		description = "Items per row in the bank. Capped at whatever fits in your client window."
-			+ " 8 is the unmodified game layout, and leaves the bank untouched.",
+			+ " 8 is the unmodified game layout, and leaves the bank untouched."
+			+ " Tabs with a saved bank tag layout keep their own 8 column arrangement,"
+			+ " so that the items stay where you put them.",
 		position = 1
 	)
 	default int columns()
