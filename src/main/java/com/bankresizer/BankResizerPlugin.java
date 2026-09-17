@@ -320,7 +320,7 @@ public class BankResizerPlugin extends Plugin
 		shiftBottomRow(delta);
 		setWidth(items, targetWidth);
 
-		if (itemsOwnedByAnotherPlugin())
+		if (itemsOwnedByAnotherPlugin(items))
 		{
 			log.debug("Another plugin owns the item positions; widening the frame only");
 		}
@@ -373,7 +373,7 @@ public class BankResizerPlugin extends Plugin
 		shiftBottomRow(0);
 		setWidth(items, BankLayout.VANILLA_CONTAINER_WIDTH);
 
-		if (!itemsOwnedByAnotherPlugin())
+		if (!itemsOwnedByAnotherPlugin(items))
 		{
 			layoutItems(items, BankLayout.VANILLA_COLUMNS, BankLayout.VANILLA_CONTAINER_WIDTH);
 		}
@@ -391,9 +391,40 @@ public class BankResizerPlugin extends Plugin
 	 * Plugins that present their own view of the bank through a bank tag, rather
 	 * than by positioning widgets themselves, are covered by the same check.
 	 */
-	private boolean itemsOwnedByAnotherPlugin()
+	private boolean itemsOwnedByAnotherPlugin(Widget items)
 	{
-		return bankTagsService != null && bankTagsService.getActiveLayout() != null;
+		if (bankTagsService != null && bankTagsService.getActiveLayout() != null)
+		{
+			return true;
+		}
+
+		// A layout pads its empty slots out to 48x36 so that its grid has no gaps.
+		// The game itself only ever draws 36x32 cells, so anything otherwise sized
+		// is proof that something else has arranged this view. Inventory Setups is
+		// laid out this way while getActiveLayout() reports nothing, so the sizes
+		// are the more reliable signal of the two.
+		Widget[] children = items.getDynamicChildren();
+		if (children == null)
+		{
+			return false;
+		}
+
+		for (Widget child : children)
+		{
+			if (child == null || child.isSelfHidden()
+				|| child.getOriginalHeight() < ITEM_CELL_HEIGHT)
+			{
+				continue;
+			}
+
+			if (child.getOriginalHeight() != BankLayout.ITEM_HEIGHT
+				|| child.getOriginalWidth() != BankLayout.ITEM_WIDTH)
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**
@@ -823,57 +854,54 @@ public class BankResizerPlugin extends Plugin
 			loggedItems = true;
 		}
 
-		int padding = BankLayout.paddingFor(containerWidth, columns);
-		int column = 0;
-		int row = 0;
-		boolean sawSeparator = false;
-
+		List<Widget> visible = new ArrayList<>();
 		for (Widget child : children)
 		{
-			if (child == null || child.isSelfHidden())
+			if (child != null && !child.isSelfHidden())
 			{
-				continue;
+				visible.add(child);
 			}
+		}
 
-			if (child.getOriginalHeight() < ITEM_CELL_HEIGHT)
+		int count = visible.size();
+		int[] xs = new int[count];
+		int[] ys = new int[count];
+		boolean[] separators = new boolean[count];
+
+		for (int i = 0; i < count; i++)
+		{
+			Widget child = visible.get(i);
+			xs[i] = child.getOriginalX();
+			ys[i] = child.getOriginalY();
+			separators[i] = child.getOriginalHeight() < ITEM_CELL_HEIGHT;
+		}
+
+		BankGrid.Plan plan = BankGrid.plan(xs, ys, separators, columns);
+		int padding = BankLayout.paddingFor(containerWidth, columns);
+
+		// The game's own separator width, 374 at the stock container width.
+		int ruleWidth = containerWidth - BankLayout.START_X - BankLayout.RIGHT_INSET;
+
+		for (BankGrid.Cell cell : plan.getCells())
+		{
+			Widget child = visible.get(cell.getIndex());
+
+			if (cell.isSeparator())
 			{
-				// Tab separators span a whole row. Close the current row first.
-				sawSeparator = true;
-				if (column > 0)
-				{
-					column = 0;
-					row++;
-				}
-
 				child.setOriginalX(BankLayout.START_X);
-				child.setOriginalY(BankLayout.itemY(row));
-				child.revalidate();
-				row++;
-				continue;
+				child.setOriginalY(BankLayout.itemY(cell.getRow()));
+				child.setOriginalWidth(ruleWidth);
 			}
-
-			child.setOriginalX(BankLayout.itemX(column, padding));
-			child.setOriginalY(BankLayout.itemY(row));
-			child.revalidate();
-
-			if (++column >= columns)
+			else
 			{
-				column = 0;
-				row++;
+				child.setOriginalX(BankLayout.itemX(cell.getColumn(), padding));
+				child.setOriginalY(BankLayout.itemY(cell.getRow()));
 			}
+
+			child.revalidate();
 		}
 
-		if (column > 0)
-		{
-			row++;
-		}
-
-		if (sawSeparator)
-		{
-			log.debug("Bank drawn with tab separators; separator placement is approximate");
-		}
-
-		applyScroll(items, BankLayout.scrollHeightFor(row));
+		applyScroll(items, BankLayout.scrollHeightFor(plan.getRows()));
 	}
 
 	/**
