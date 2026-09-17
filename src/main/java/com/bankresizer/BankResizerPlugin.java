@@ -1125,7 +1125,8 @@ public class BankResizerPlugin extends Plugin
 			{
 				Widget child = children[i];
 				if (child == null || child.isSelfHidden()
-					|| child.getOriginalHeight() > BankLayout.ROW_PITCH)
+					|| child.getOriginalHeight() > BankLayout.ROW_PITCH
+					|| !partOfEntry(child, entry))
 				{
 					continue;
 				}
@@ -1138,6 +1139,21 @@ public class BankResizerPlugin extends Plugin
 				}
 			}
 		}
+	}
+
+	/**
+	 * Whether this child is part of the given entry rather than something drawn
+	 * between entries.
+	 *
+	 * By its y, which is never written here. An entry's range runs from its block
+	 * to the next one, so a section heading such as "Potions" or "Vials" falls
+	 * inside the range of whichever entry precedes it. Treating those as the
+	 * entry's own text moved them to where an entry's text belongs.
+	 */
+	private boolean partOfEntry(Widget child, int[] entry)
+	{
+		return child.getOriginalY() >= entry[3]
+			&& child.getOriginalY() < entry[3] + BankLayout.ROW_PITCH;
 	}
 
 	/** The parts an entry is built from, told apart by size and type. */
@@ -1203,6 +1219,7 @@ public class BankResizerPlugin extends Plugin
 				Widget child = children[i];
 				if (child == null || child.isSelfHidden()
 					|| child.getOriginalHeight() > BankLayout.ROW_PITCH
+					|| !partOfEntry(child, entry)
 					|| partOf(child) != part)
 				{
 					continue;
