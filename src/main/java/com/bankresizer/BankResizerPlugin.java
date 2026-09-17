@@ -210,6 +210,12 @@ public class BankResizerPlugin extends Plugin
 	/** Geometry of the potion store last dumped, for the same reason. */
 	private String loggedPotionShape;
 
+	/**
+	 * Distance the favourite heart keeps from the right of its entry, or -1 until
+	 * the store has been seen as the game laid it out.
+	 */
+	private int potionHeartInset = -1;
+
 	/** Layout passes since the last timing report. */
 	private int passes;
 
@@ -988,11 +994,14 @@ public class BankResizerPlugin extends Plugin
 	 * The game script sizes each entry from the container width but lays the two
 	 * columns out on a pitch fixed at the vanilla width. Measured live at a
 	 * container of 521: entries 252 wide at x=0 and x=204, so each overlapped its
-	 * neighbour by 48px. At the vanilla 425 the two agree exactly, which is why
-	 * this is never visible in an unmodified client.
+	 * neighbour by 48px. At the vanilla 425 the two agree, which is why an
+	 * unmodified client never shows this.
 	 *
-	 * The pitch is taken from the entries themselves rather than assumed, so this
-	 * is a no-op when they already agree, and applying it twice changes nothing.
+	 * A column is taken from the entry's ordinal and never from where the entry
+	 * currently sits. The store's widgets outlive the bank closing, so on a reopen
+	 * some entries still hold the positions set here while the script has relaid
+	 * others; reading a column from those positions saw a third column and threw
+	 * entries off the side, losing the right hand column's favourite heart.
 	 */
 	private void spreadPotionEntries()
 	{
@@ -1013,7 +1022,9 @@ public class BankResizerPlugin extends Plugin
 		int entryWidth = 0;
 		for (Widget child : children)
 		{
-			if (child != null && !child.isSelfHidden() && child.getType() == WidgetType.GRAPHIC)
+			if (child != null && !child.isSelfHidden()
+				&& child.getType() == WidgetType.GRAPHIC
+				&& child.getOriginalHeight() <= BankLayout.ROW_PITCH)
 			{
 				entryWidth = Math.max(entryWidth, child.getOriginalWidth());
 			}
@@ -1024,74 +1035,45 @@ public class BankResizerPlugin extends Plugin
 			return;
 		}
 
-		// Where the script started each column. Only the backing graphics mark a
-		// column; the icon and the two text lines sit at offsets inside one.
-		List<Integer> bases = new ArrayList<>();
+		int furthest = furthestOffsetInAnEntry(children, entryWidth);
+
+		// The favourite heart sits furthest right in an entry and the game holds it
+		// against that edge, so it keeps its distance from the right rather than
+		// the left. Captured once, because a later pass may find it already moved.
+		if (potionHeartInset < 0 && furthest > 0 && furthest < entryWidth)
+		{
+			potionHeartInset = entryWidth - furthest;
+		}
+
+		int entry = -1;
+		int base = 0;
+		int column = 0;
+
 		for (Widget child : children)
 		{
 			if (child == null || child.isSelfHidden()
-				|| child.getType() != WidgetType.GRAPHIC
-				|| child.getOriginalWidth() != entryWidth)
+				|| child.getOriginalHeight() > BankLayout.ROW_PITCH)
 			{
 				continue;
 			}
 
-			if (!bases.contains(child.getOriginalX()))
+			if (child.getType() == WidgetType.GRAPHIC
+				&& child.getOriginalWidth() == entryWidth)
 			{
-				bases.add(child.getOriginalX());
+				entry++;
+				base = child.getOriginalX();
+				column = (entry % 2) * entryWidth;
 			}
-		}
 
-		if (bases.size() < 2)
-		{
-			return;
-		}
-
-		bases.sort(Integer::compare);
-
-		// The pitch the script laid the columns out on, which is what every offset
-		// inside a column was measured against.
-		int pitch = bases.get(1) - bases.get(0);
-		if (pitch <= 0)
-		{
-			return;
-		}
-
-		for (Widget child : children)
-		{
-			if (child == null || child.isSelfHidden())
+			if (entry < 0)
 			{
 				continue;
 			}
 
-			// Only the parts of an entry move. Anything taller than a row spans
-			// several of them, such as the divider between the columns, and the
-			// script places those from the container width, so they are already
-			// where they should be and shifting them drags them off centre.
-			if (child.getOriginalHeight() > BankLayout.ROW_PITCH)
-			{
-				continue;
-			}
-
-			int column = 0;
-			for (int i = 0; i < bases.size(); i++)
-			{
-				if (child.getOriginalX() >= bases.get(i))
-				{
-					column = i;
-				}
-			}
-
-			int offset = child.getOriginalX() - bases.get(column);
-
-			// Anything sitting in the right half of an entry is right aligned there,
-			// the favourite heart above all, so it keeps its distance from the right
-			// edge. Measuring it from the left instead left it stranded mid entry
-			// once the entry grew. Where the pitch already matches the width this
-			// works out to the same number, so applying it twice changes nothing.
-			int moved = offset > pitch / 2
-				? column * entryWidth + entryWidth - (pitch - offset)
-				: column * entryWidth + offset;
+			int offset = child.getOriginalX() - base;
+			int moved = potionHeartInset >= 0 && offset >= furthest
+				? column + entryWidth - potionHeartInset
+				: column + offset;
 
 			if (moved != child.getOriginalX())
 			{
@@ -1099,6 +1081,35 @@ public class BankResizerPlugin extends Plugin
 				child.revalidate();
 			}
 		}
+	}
+
+	/** How far right of its entry's start the furthest part of any entry sits. */
+	private int furthestOffsetInAnEntry(Widget[] children, int entryWidth)
+	{
+		int furthest = 0;
+		int base = Integer.MIN_VALUE;
+
+		for (Widget child : children)
+		{
+			if (child == null || child.isSelfHidden()
+				|| child.getOriginalHeight() > BankLayout.ROW_PITCH)
+			{
+				continue;
+			}
+
+			if (child.getType() == WidgetType.GRAPHIC
+				&& child.getOriginalWidth() == entryWidth)
+			{
+				base = child.getOriginalX();
+			}
+
+			if (base != Integer.MIN_VALUE)
+			{
+				furthest = Math.max(furthest, child.getOriginalX() - base);
+			}
+		}
+
+		return furthest;
 	}
 
 	/**
