@@ -341,6 +341,24 @@ public class BankResizerPlugin extends Plugin
 		// the store wrong until it was closed and reopened by hand.
 		spreadPotionEntries();
 
+		// Fixed mode lays the interface out differently and the measurement that
+		// bounds the width finds the whole canvas rather than the game area, so
+		// extra columns ran out over the inventory and minimap. The bank is left
+		// alone there until that is measured properly.
+		if (!client.isResized())
+		{
+			if (modified)
+			{
+				restoreLayout();
+				restoreAncestors();
+				originalWidths.clear();
+				modified = false;
+			}
+
+			latchedColumns = BankLayout.VANILLA_COLUMNS;
+			return;
+		}
+
 		int columns = resolveColumns();
 
 		// Vanilla width and vanilla height together mean there is nothing to do.

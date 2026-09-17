@@ -34,8 +34,8 @@ The maximum depends on your client window: the bank will not grow past the edge
 of the game area, and the count is capped to whatever actually fits. Asking for
 more columns than there is room for simply gives you as many as fit.
 
-In fixed mode there is very little spare room, so expect one or two extra columns
-at most. Resizable mode is where this is worth using.
+**This plugin only works in resizable mode.** In fixed mode the bank is left
+exactly as the game draws it, whatever the column count is set to.
 
 ## What to expect
 

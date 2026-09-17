@@ -35,7 +35,8 @@ public interface BankResizerConfig extends Config
 			+ "<br><br>Capped to whatever fits in your client window, so asking for"
 			+ " more than there is room for gives you as many as fit."
 			+ "<br><br>Tabs with a saved bank tag layout keep their own 8 column"
-			+ " arrangement, so that the items stay where you put them.",
+			+ " arrangement, so that the items stay where you put them."
+			+ "<br><br>Has no effect in fixed mode, which has no room to spare.",
 		position = 0
 	)
 	@Range(
