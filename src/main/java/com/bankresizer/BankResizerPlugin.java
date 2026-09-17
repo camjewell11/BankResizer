@@ -992,6 +992,15 @@ public class BankResizerPlugin extends Plugin
 				continue;
 			}
 
+			// Only the parts of an entry move. Anything taller than a row spans
+			// several of them, such as the divider between the columns, and the
+			// script places those from the container width, so they are already
+			// where they should be and shifting them drags them off centre.
+			if (child.getOriginalHeight() > BankLayout.ROW_PITCH)
+			{
+				continue;
+			}
+
 			int column = 0;
 			for (int i = 0; i < bases.size(); i++)
 			{
@@ -1052,18 +1061,32 @@ public class BankResizerPlugin extends Plugin
 		if (children != null)
 		{
 			int shown = 0;
+			StringBuilder tall = new StringBuilder();
+
 			for (Widget child : children)
 			{
-				if (child == null || child.isSelfHidden() || shown >= 14)
+				if (child == null || child.isSelfHidden())
 				{
 					continue;
 				}
 
-				shown++;
-				shape.append(String.format(" child[%dx%d x=%d y=%d type=%d]",
-					child.getOriginalWidth(), child.getOriginalHeight(),
-					child.getOriginalX(), child.getOriginalY(), child.getType()));
+				if (child.getOriginalHeight() > BankLayout.ROW_PITCH)
+				{
+					tall.append(String.format(" [%dx%d x=%d y=%d type=%d]",
+						child.getOriginalWidth(), child.getOriginalHeight(),
+						child.getOriginalX(), child.getOriginalY(), child.getType()));
+					continue;
+				}
+
+				if (shown++ < 8)
+				{
+					shape.append(String.format(" child[%dx%d x=%d y=%d type=%d]",
+						child.getOriginalWidth(), child.getOriginalHeight(),
+						child.getOriginalX(), child.getOriginalY(), child.getType()));
+				}
 			}
+
+			shape.append(" taller than a row:").append(tall.length() == 0 ? " none" : tall);
 		}
 
 		String text = shape.toString();
