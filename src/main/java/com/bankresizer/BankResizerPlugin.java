@@ -337,8 +337,12 @@ public class BankResizerPlugin extends Plugin
 			logGeometry("before");
 		}
 
-		resizeChrome(delta);
+		// Before resizeChrome, and it has to stay that way. Pinning reads the
+		// position the strip is sitting at, and once the window has been widened
+		// the strip has already re-centred into it, so reading it afterwards
+		// captures the centred position and pins the strip right back where it was.
 		pinTabsLeft(delta);
+		resizeChrome(delta);
 		shiftBottomRow(delta);
 		setWidth(items, targetWidth);
 
@@ -787,7 +791,9 @@ public class BankResizerPlugin extends Plugin
 	 * the anchor, not the width, is what moves it.
 	 *
 	 * Pinning uses the position the strip rendered at before anything was touched,
-	 * so it lands exactly where the unmodified client drew it.
+	 * so it lands exactly where the unmodified client drew it. That is why this
+	 * runs before the window is widened: afterwards the strip has re-centred and
+	 * the position read back is the one being corrected.
 	 */
 	private void pinTabsLeft(int delta)
 	{
