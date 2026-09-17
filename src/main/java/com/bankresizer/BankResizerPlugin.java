@@ -68,7 +68,7 @@ public class BankResizerPlugin extends Plugin
 	private static final int MAX_PLAUSIBLE_CHROME_WIDTH = 200;
 
 	/**
-	 * Widgets that must be widened by hand, because their width is absolute.
+	 * Widgets inside the bank that must be widened by hand.
 	 *
 	 * Deliberately short. Most of the bank chrome is sized in {@code MINUS} mode,
 	 * where the stored value is an inset from the parent rather than a width, so
@@ -77,11 +77,13 @@ public class BankResizerPlugin extends Plugin
 	 * BOTTOM all behaved that way before this list was cut down. SCROLLBAR is
 	 * right anchored and moves on its own.
 	 *
-	 * UNIVERSE is the bank window itself. TABS re-centres its own icons from its
-	 * width, so widening it is enough to reflow the tabs.
+	 * The bank window and its fixed-width ancestors are not listed here. They are
+	 * found by walking the widget tree, see {@link BankRoom}.
+	 *
+	 * TABS re-centres its own icons from its width, so widening it is enough to
+	 * reflow the tabs.
 	 */
 	private static final int[] WIDTH_TRACKING = {
-		InterfaceID.Bankmain.UNIVERSE,
 		InterfaceID.Bankmain.TABS,
 	};
 
@@ -310,15 +312,18 @@ public class BankResizerPlugin extends Plugin
 			return BankLayout.VANILLA_CONTAINER_WIDTH;
 		}
 
-		Point location = root.getCanvasLocation();
-		if (location == null)
-		{
-			return BankLayout.VANILLA_CONTAINER_WIDTH;
-		}
+		// What the widget tree allows: the narrowest ancestor that will not grow.
+		int maxWindow = BankRoom.measure(root, canvasWidth).getLimit() - 2 * EDGE_MARGIN;
 
-		// Stable as the window grows, precisely because it is centre anchored.
-		int centre = location.getX() + root.getWidth() / 2;
-		int maxWindow = BankLayout.maxWindowWidthFor(centre, canvasWidth, EDGE_MARGIN);
+		Point location = root.getCanvasLocation();
+		if (location != null)
+		{
+			// Belt and braces. Even inside a roomy ancestor, a centre anchored
+			// window still has to stay on the canvas.
+			int centre = location.getX() + root.getWidth() / 2;
+			maxWindow = Math.min(maxWindow,
+				BankLayout.maxWindowWidthFor(centre, canvasWidth, EDGE_MARGIN));
+		}
 
 		return maxWindow - measuredChrome();
 	}
@@ -431,6 +436,14 @@ public class BankResizerPlugin extends Plugin
 	 */
 	private void resizeChrome(int delta)
 	{
+		// The bank window and every fixed-width ancestor holding it. Widening the
+		// window alone leaves it inside a 512 wide slot that clips it.
+		Widget root = client.getWidget(InterfaceID.Bankmain.UNIVERSE);
+		for (Widget slot : BankRoom.measure(root, client.getCanvasWidth()).getSlots())
+		{
+			setWidth(slot, originalWidthOf(slot) + delta);
+		}
+
 		for (int componentId : WIDTH_TRACKING)
 		{
 			Widget widget = client.getWidget(componentId);
