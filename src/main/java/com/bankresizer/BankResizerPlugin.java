@@ -206,6 +206,9 @@ public class BankResizerPlugin extends Plugin
 	 */
 	private String loggedShape;
 
+	/** Geometry of the potion store last dumped, for the same reason. */
+	private String loggedPotionShape;
+
 	/**
 	 * Column count asked for when the bank was opened, held until it closes.
 	 *
@@ -365,6 +368,11 @@ public class BankResizerPlugin extends Plugin
 		{
 			logGeometry("after");
 			loggedGeometry = true;
+		}
+
+		if (log.isDebugEnabled())
+		{
+			logPotionStore();
 		}
 
 		modified = true;
@@ -904,6 +912,70 @@ public class BankResizerPlugin extends Plugin
 	}
 
 	/**
+	 * Dumps the potion store's geometry when it changes.
+	 *
+	 * The potion store is drawn into POTIONSTORE_ITEMS, a container of its own
+	 * rather than the bank's item container, so nothing this plugin does to the
+	 * item grid reaches it. What does reach it is the window growing underneath
+	 * it, which is the likely source of its misalignment.
+	 */
+	private void logPotionStore()
+	{
+		Widget items = client.getWidget(InterfaceID.Bankmain.POTIONSTORE_ITEMS);
+		if (items == null || items.isHidden())
+		{
+			return;
+		}
+
+		StringBuilder shape = new StringBuilder();
+		int[] parts = {
+			InterfaceID.Bankmain.POTIONSTORE_CONTAINER,
+			InterfaceID.Bankmain.POTIONSTORE_BACKGROUND,
+			InterfaceID.Bankmain.POTIONSTORE_ITEMS,
+			InterfaceID.Bankmain.POTIONSTORE_SCROLLBAR,
+		};
+
+		for (int part : parts)
+		{
+			Widget widget = client.getWidget(part);
+			if (widget == null)
+			{
+				continue;
+			}
+
+			shape.append(String.format(" [%d origW=%d w=%d origX=%d x=%d wMode=%d xMode=%d]",
+				part & 0xffff, widget.getOriginalWidth(), widget.getWidth(),
+				widget.getOriginalX(), widget.getRelativeX(),
+				widget.getWidthMode(), widget.getXPositionMode()));
+		}
+
+		Widget[] children = items.getDynamicChildren();
+		if (children != null)
+		{
+			int shown = 0;
+			for (Widget child : children)
+			{
+				if (child == null || child.isSelfHidden() || shown >= 6)
+				{
+					continue;
+				}
+
+				shown++;
+				shape.append(String.format(" child[%dx%d x=%d y=%d type=%d]",
+					child.getOriginalWidth(), child.getOriginalHeight(),
+					child.getOriginalX(), child.getOriginalY(), child.getType()));
+			}
+		}
+
+		String text = shape.toString();
+		if (!text.equals(loggedPotionShape))
+		{
+			loggedPotionShape = text;
+			log.debug("potion store:{}", text);
+		}
+	}
+
+	/**
 	 * Dumps the shape of the item container once per bank open.
 	 *
 	 * Diagnostic only. The "view all items" tab has twice been laid out wrongly
@@ -1131,6 +1203,7 @@ public class BankResizerPlugin extends Plugin
 		modified = false;
 		loggedGeometry = false;
 		loggedShape = null;
+		loggedPotionShape = null;
 		latchedColumns = -1;
 		appliedColumns = -1;
 		appliedCanvasWidth = -1;
