@@ -546,6 +546,7 @@ public class BankResizerPlugin extends Plugin
 		logWidget("ITEMS_CONTAINER", InterfaceID.Bankmain.ITEMS_CONTAINER);
 		logWidget("ITEMS", InterfaceID.Bankmain.ITEMS);
 		logWidget("TABS", InterfaceID.Bankmain.TABS);
+		logChildrenOf("tabs", client.getWidget(InterfaceID.Bankmain.TABS));
 		logWidget("BOTTOM", InterfaceID.Bankmain.BOTTOM);
 		logWidget("SCROLLBAR", InterfaceID.Bankmain.SCROLLBAR);
 	}
@@ -612,6 +613,12 @@ public class BankResizerPlugin extends Plugin
 
 	private void logChildrenOf(String label, Widget parent)
 	{
+		if (parent == null)
+		{
+			log.debug("  {}: null", label);
+			return;
+		}
+
 		Widget[] children = parent.getStaticChildren();
 		if (children == null)
 		{
