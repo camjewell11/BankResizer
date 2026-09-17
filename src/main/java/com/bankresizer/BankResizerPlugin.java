@@ -222,11 +222,22 @@ public class BankResizerPlugin extends Plugin
 
 		log.debug("Laying out bank at {} columns, container width {} (delta {})",
 			columns, targetWidth, delta);
-		logGeometry();
+
+		boolean dump = log.isDebugEnabled() && !loggedGeometry;
+		if (dump)
+		{
+			logGeometry("before");
+		}
 
 		resizeChrome(delta);
 		setWidth(items, targetWidth);
 		layoutItems(items, columns, targetWidth);
+
+		if (dump)
+		{
+			logGeometry("after");
+			loggedGeometry = true;
+		}
 
 		modified = true;
 		appliedColumns = columns;
@@ -341,17 +352,11 @@ public class BankResizerPlugin extends Plugin
 	 * Dumps the geometry this plugin depends on. Debug only, and only while the
 	 * widget set is still being confirmed against a running client.
 	 */
-	private void logGeometry()
+	private void logGeometry(String phase)
 	{
-		// Once per interface load. The bank rebuilds several times a second, and
-		// dumping seven widgets on every pass floods the log.
-		if (!log.isDebugEnabled() || loggedGeometry)
-		{
-			return;
-		}
-
-		loggedGeometry = true;
-		log.debug("canvas {}x{}", client.getCanvasWidth(), client.getCanvasHeight());
+		log.debug("--- bank geometry [{}] canvas {}x{}",
+			phase, client.getCanvasWidth(), client.getCanvasHeight());
+		logParentChain();
 		logWidget("UNIVERSE", InterfaceID.Bankmain.UNIVERSE);
 		logWidget("FRAME", InterfaceID.Bankmain.FRAME);
 		logWidget("ITEMS_CONTAINER", InterfaceID.Bankmain.ITEMS_CONTAINER);
@@ -359,6 +364,41 @@ public class BankResizerPlugin extends Plugin
 		logWidget("TABS", InterfaceID.Bankmain.TABS);
 		logWidget("BOTTOM", InterfaceID.Bankmain.BOTTOM);
 		logWidget("SCROLLBAR", InterfaceID.Bankmain.SCROLLBAR);
+	}
+
+	/**
+	 * Walks from the bank window up to the root of the interface tree.
+	 *
+	 * This is the measurement that decides whether widening the bank window can
+	 * work at all. If an ancestor is narrower than the width we want and clips its
+	 * children, growing the window only pushes content out of view instead of
+	 * revealing more of it.
+	 */
+	private void logParentChain()
+	{
+		Widget widget = client.getWidget(InterfaceID.Bankmain.UNIVERSE);
+		if (widget == null)
+		{
+			log.debug("  parent chain: UNIVERSE is null");
+			return;
+		}
+
+		int depth = 0;
+		for (Widget node = widget; node != null && depth < 12; node = node.getParent(), depth++)
+		{
+			log.debug("  chain[{}]: id={} group={} child={} origW={} w={} h={} x={} canvasX={} wMode={} xMode={}",
+				depth,
+				node.getId(),
+				node.getId() >>> 16,
+				node.getId() & 0xFFFF,
+				node.getOriginalWidth(),
+				node.getWidth(),
+				node.getHeight(),
+				node.getRelativeX(),
+				node.getCanvasLocation() == null ? -1 : node.getCanvasLocation().getX(),
+				node.getWidthMode(),
+				node.getXPositionMode());
+		}
 	}
 
 	private void logWidget(String label, int componentId)
