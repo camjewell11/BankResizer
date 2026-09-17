@@ -1067,8 +1067,8 @@ public class BankResizerPlugin extends Plugin
 		for (Widget child : children)
 		{
 			if (child != null && !child.isSelfHidden()
-				&& child.getType() == WidgetType.GRAPHIC
-				&& child.getOriginalHeight() <= BankLayout.ROW_PITCH)
+				&& child.getOriginalHeight() <= BankLayout.ROW_PITCH
+				&& isEntryBackground(child))
 			{
 				entryWidth = Math.max(entryWidth, child.getOriginalWidth());
 			}
@@ -1090,8 +1090,7 @@ public class BankResizerPlugin extends Plugin
 				continue;
 			}
 
-			if (child.getType() == WidgetType.GRAPHIC
-				&& child.getOriginalWidth() == entryWidth)
+			if (isEntryBackground(child))
 			{
 				if (!entries.isEmpty())
 				{
@@ -1139,7 +1138,7 @@ public class BankResizerPlugin extends Plugin
 				int offset = child.getOriginalX() - entry[2];
 
 				// The heart is the one part the game holds against the right edge.
-				int moved = heartInset >= 0 && isFavouriteHeart(child, entryWidth)
+				int moved = heartInset >= 0 && isFavouriteHeart(child)
 					? base + entryWidth - heartInset
 					: base + offset;
 
@@ -1161,15 +1160,33 @@ public class BankResizerPlugin extends Plugin
 	 * the side. An entry holds exactly three graphics: its backing block, the
 	 * potion icon at item width, and the heart, which is neither.
 	 */
-	private boolean isFavouriteHeart(Widget child, int entryWidth)
+	private boolean isFavouriteHeart(Widget child)
 	{
 		return child.getType() == WidgetType.GRAPHIC
-			&& child.getOriginalWidth() != entryWidth
-			&& child.getOriginalWidth() != BankLayout.ITEM_WIDTH;
+			&& child.getOriginalWidth() < BankLayout.ITEM_WIDTH;
+	}
+
+	/**
+	 * Whether this child is the block an entry is drawn on.
+	 *
+	 * By being wider than an item icon, not by matching the widest block found.
+	 * The store's widgets outlive the bank closing, so stepping through column
+	 * counts leaves blocks at a mix of widths; any that was not the widest then
+	 * failed to be recognised as an entry at all, and its icon and text were
+	 * measured against the entry before it and placed off to the side.
+	 *
+	 * The three graphics of an entry are told apart by size alone: this block is
+	 * wider than an item, the potion icon is exactly an item wide, and the
+	 * favourite heart is smaller.
+	 */
+	private boolean isEntryBackground(Widget child)
+	{
+		return child.getType() == WidgetType.GRAPHIC
+			&& child.getOriginalWidth() > BankLayout.ITEM_WIDTH;
 	}
 
 	/** How far right of its own start an entry's heart sits, or -1 without one. */
-	private int heartOffsetIn(Widget[] children, int[] entry, int entryWidth)
+	private int heartOffsetIn(Widget[] children, int[] entry)
 	{
 		for (int i = entry[0]; i < entry[1]; i++)
 		{
@@ -1180,7 +1197,7 @@ public class BankResizerPlugin extends Plugin
 				continue;
 			}
 
-			if (isFavouriteHeart(child, entryWidth))
+			if (isFavouriteHeart(child))
 			{
 				return child.getOriginalX() - entry[2];
 			}
@@ -1220,8 +1237,8 @@ public class BankResizerPlugin extends Plugin
 				continue;
 			}
 
-			int heart = Math.max(heartOffsetIn(children, left, pitch),
-				heartOffsetIn(children, right, pitch));
+			int heart = Math.max(heartOffsetIn(children, left),
+				heartOffsetIn(children, right));
 
 			if (heart > 0 && heart < pitch)
 			{
