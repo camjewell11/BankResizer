@@ -210,6 +210,24 @@ public class BankResizerPlugin extends Plugin
 	/** Geometry of the potion store last dumped, for the same reason. */
 	private String loggedPotionShape;
 
+	/** Layout passes since the last timing report. */
+	private int passes;
+
+	/** Nanoseconds spent laying out since the last timing report. */
+	private long totalNanos;
+
+	/** Longest single pass since the last timing report. */
+	private long worstNanos;
+
+	/** Widgets repositioned by the most recent pass. */
+	private int movedWidgets;
+
+	/** Widgets repositioned since the last timing report. */
+	private long totalMoved;
+
+	/** When the current timing window started. */
+	private long windowStartedNanos;
+
 	/**
 	 * Column count asked for when the bank was opened, held until it closes.
 	 *
@@ -337,6 +355,7 @@ public class BankResizerPlugin extends Plugin
 		}
 
 		int delta = targetWidth - BankLayout.VANILLA_CONTAINER_WIDTH;
+		long startedNanos = System.nanoTime();
 
 		log.debug("Laying out bank at {} columns, container width {} (delta {}), because {}",
 			columns, targetWidth, delta, staleReason(items, columns, canvasWidth, targetWidth));
@@ -377,6 +396,8 @@ public class BankResizerPlugin extends Plugin
 		{
 			logPotionStore();
 		}
+
+		recordPass(System.nanoTime() - startedNanos);
 
 		modified = true;
 		appliedColumns = columns;
@@ -915,6 +936,49 @@ public class BankResizerPlugin extends Plugin
 	}
 
 	/**
+	 * Accumulates the cost of one layout pass and reports it periodically.
+	 *
+	 * The bank rebuilds several times a second while it is open and this plugin
+	 * follows each rebuild, so the figure that matters is not one pass but the
+	 * share of a second they add up to. Reported every 25 passes with the worst
+	 * single pass alongside the average, because an occasional long pass is what
+	 * would show as a stutter rather than a lower frame rate.
+	 */
+	private void recordPass(long nanos)
+	{
+		if (passes == 0)
+		{
+			windowStartedNanos = System.nanoTime();
+		}
+
+		passes++;
+		totalNanos += nanos;
+		totalMoved += movedWidgets;
+		worstNanos = Math.max(worstNanos, nanos);
+
+		if (passes < 25)
+		{
+			return;
+		}
+
+		long elapsed = Math.max(1L, System.nanoTime() - windowStartedNanos);
+
+		log.debug("Bank Resizer: {} passes in {} ms, {} us each on average, worst {} us,"
+				+ " {} widgets per pass, {}% of wall clock",
+			passes,
+			elapsed / 1_000_000,
+			totalNanos / passes / 1_000,
+			worstNanos / 1_000,
+			totalMoved / passes,
+			String.format("%.2f", 100.0 * totalNanos / elapsed));
+
+		passes = 0;
+		totalNanos = 0;
+		worstNanos = 0;
+		totalMoved = 0;
+	}
+
+	/**
 	 * Spreads the potion store's entries to match the width they were given.
 	 *
 	 * The store is an overlay covering the item area, so its container has to span
@@ -1269,6 +1333,8 @@ public class BankResizerPlugin extends Plugin
 
 			child.revalidate();
 		}
+
+		movedWidgets = plan.getCells().size();
 
 		applyScroll(items, plan.getHeight() == 0 ? 0 : plan.getHeight() + BankLayout.SCROLL_PADDING);
 	}
