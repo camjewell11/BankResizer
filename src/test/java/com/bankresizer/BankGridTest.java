@@ -150,6 +150,23 @@ public class BankGridTest
 	}
 
 	@Test
+	public void headingAndRuleForTheSameGroupBothGetTheirOwnRow()
+	{
+		// A live group is introduced by a 2px rule and a heading of item height,
+		// both wider than an item. Neither may share a row with the items.
+		BankGrid.Plan plan = BankGrid.plan(
+			new int[]{51, 51, 51, 51},
+			new int[]{0, 804, 797, 799},
+			new boolean[]{false, false, true, true},
+			8);
+
+		assertEquals(0, cellFor(plan, 0).getRow());
+		assertEquals(1, cellFor(plan, 2).getRow());
+		assertEquals(2, cellFor(plan, 3).getRow());
+		assertEquals(3, cellFor(plan, 1).getRow());
+	}
+
+	@Test
 	public void toleratesEmptyAndMismatchedInput()
 	{
 		assertEquals(0, BankGrid.plan(new int[0], new int[0], new boolean[0], 8).getRows());

@@ -886,7 +886,13 @@ public class BankResizerPlugin extends Plugin
 			Widget child = visible.get(i);
 			xs[i] = child.getOriginalX();
 			ys[i] = child.getOriginalY();
-			separators[i] = child.getOriginalHeight() < ITEM_CELL_HEIGHT;
+
+			// Width, not height, is what separates an item from the furniture.
+			// A live "view all items" tab holds 1081 cells at 36x32, nine 2px
+			// rules at 374 wide, and nine headings at 180, 228 and 324 wide by 32
+			// tall. The headings are exactly item height, so a height test slotted
+			// a 324px heading into a 36px item position.
+			separators[i] = child.getOriginalWidth() != BankLayout.ITEM_WIDTH;
 		}
 
 		BankGrid.Plan plan = BankGrid.plan(xs, ys, separators, columns);
@@ -903,7 +909,13 @@ public class BankResizerPlugin extends Plugin
 			{
 				child.setOriginalX(BankLayout.START_X);
 				child.setOriginalY(BankLayout.itemY(cell.getRow()));
-				child.setOriginalWidth(ruleWidth);
+
+				// Stretch the rules across the wider grid, but leave the headings
+				// at their own width, which is the width of their text.
+				if (child.getOriginalHeight() < ITEM_CELL_HEIGHT)
+				{
+					child.setOriginalWidth(ruleWidth);
+				}
 			}
 			else
 			{
