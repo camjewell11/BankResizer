@@ -31,6 +31,7 @@ import net.runelite.api.events.ScriptPostFired;
 import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.widgets.Widget;
+import net.runelite.api.widgets.WidgetPositionMode;
 import net.runelite.api.widgets.WidgetSizeMode;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
@@ -86,6 +87,9 @@ public class BankResizerPlugin extends Plugin
 	 */
 	private static final int[] WIDTH_TRACKING = {
 		InterfaceID.Bankmain.TABS,
+		// The title bar is 476 wide in absolute mode, so it would sit short of the
+		// right edge of a widened window.
+		InterfaceID.Bankmain.TITLE,
 	};
 
 	@Inject
@@ -127,8 +131,11 @@ public class BankResizerPlugin extends Plugin
 
 		private final int renderedHeight;
 
+		private final int originalX;
+
 		private WidgetSize(Widget widget)
 		{
+			this.originalX = widget.getOriginalX();
 			this.originalWidth = widget.getOriginalWidth();
 			this.widthMode = widget.getWidthMode();
 			this.renderedWidth = widget.getWidth();
@@ -270,6 +277,7 @@ public class BankResizerPlugin extends Plugin
 		}
 
 		resizeChrome(delta);
+		shiftBottomRow(delta);
 		setWidth(items, targetWidth);
 		layoutItems(items, columns, targetWidth);
 
@@ -314,6 +322,7 @@ public class BankResizerPlugin extends Plugin
 		}
 
 		resizeChrome(0);
+		shiftBottomRow(0);
 		setWidth(items, BankLayout.VANILLA_CONTAINER_WIDTH);
 		layoutItems(items, BankLayout.VANILLA_COLUMNS, BankLayout.VANILLA_CONTAINER_WIDTH);
 	}
@@ -623,6 +632,55 @@ public class BankResizerPlugin extends Plugin
 			}
 
 			setWidth(widget, originalWidthOf(widget) + delta);
+		}
+	}
+
+	/**
+	 * Moves the right hand end of the bottom button row out with the window.
+	 *
+	 * Every one of the row's 18 buttons is pinned to the left edge at a fixed
+	 * offset, and together they fill the vanilla width exactly, ending 2px short
+	 * of the right edge. Widen the row and they all stay put, stranding the right
+	 * hand controls mid-window with a gap beside them.
+	 *
+	 * The row already has a separator near its midpoint, so the split falls where
+	 * the interface designers put one: controls left of it keep their place, the
+	 * group right of it moves with the edge.
+	 *
+	 * Offsets come from the saved originals rather than current positions, because
+	 * this also runs on passes where the game has not rebuilt the row, and reading
+	 * back an already shifted offset would move it twice.
+	 */
+	private void shiftBottomRow(int delta)
+	{
+		Widget bottom = client.getWidget(InterfaceID.Bankmain.BOTTOM);
+		if (bottom == null)
+		{
+			return;
+		}
+
+		Widget[] children = bottom.getStaticChildren();
+		if (children == null)
+		{
+			return;
+		}
+
+		int split = originalWidthOf(bottom) / 2;
+		for (Widget child : children)
+		{
+			if (child == null || child.getXPositionMode() != WidgetPositionMode.ABSOLUTE_LEFT)
+			{
+				continue;
+			}
+
+			WidgetSize size = savedSize(child);
+			if (size.originalX < split)
+			{
+				continue;
+			}
+
+			child.setOriginalX(size.originalX + delta);
+			child.revalidate();
 		}
 	}
 
