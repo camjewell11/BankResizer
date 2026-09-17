@@ -333,6 +333,14 @@ public class BankResizerPlugin extends Plugin
 			return;
 		}
 
+		// Before any of the early returns below. The store is its own container and
+		// its widgets outlive the bank closing, so reopening a bank that was last
+		// showing the store finds them still where they were left. On that pass the
+		// store is not visible yet, and by the time it is, the bank's own layout is
+		// up to date and every later pass returns before reaching here. That left
+		// the store wrong until it was closed and reopened by hand.
+		spreadPotionEntries();
+
 		int columns = resolveColumns();
 
 		// Vanilla width and vanilla height together mean there is nothing to do.
@@ -425,8 +433,6 @@ public class BankResizerPlugin extends Plugin
 			logGeometry("after");
 			loggedGeometry = true;
 		}
-
-		spreadPotionEntries();
 
 		if (log.isDebugEnabled())
 		{
