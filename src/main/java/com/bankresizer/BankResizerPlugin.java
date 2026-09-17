@@ -200,6 +200,16 @@ public class BankResizerPlugin extends Plugin
 	/** Whether the item container has been dumped since the bank was opened. */
 	private boolean loggedItems;
 
+	/**
+	 * Column count asked for when the bank was opened, held until it closes.
+	 *
+	 * Changing the count with the bank open left it half rebuilt, because the game
+	 * positions its own widgets only when it builds the interface, so a new count
+	 * reached some of them and not others. {@code -1} means nothing is latched and
+	 * the next layout will take the configured value.
+	 */
+	private int latchedColumns = -1;
+
 	/** Column count and canvas width of the last layout actually applied. */
 	private int appliedColumns = -1;
 
@@ -248,17 +258,10 @@ public class BankResizerPlugin extends Plugin
 			return;
 		}
 
-		// Relaying out a bank that is already open leaves it half rebuilt: the
-		// game positions its own widgets only when it builds the interface, so a
-		// change made mid-session applied to some of them and not others. Wait for
-		// the next open, when the game has drawn a clean layout to work from.
-		Widget items = client.getWidget(InterfaceID.Bankmain.ITEMS);
-		if (items != null && !items.isHidden())
-		{
-			log.debug("Bank is open; the new column count applies when it is reopened");
-			return;
-		}
-
+		// No check for an open bank here. Config events arrive on the AWT thread,
+		// where widgets cannot be read, and a check here would not hold anyway: the
+		// bank's own scripts call applyLayout on every rebuild and would pick the
+		// new value up regardless. The count is latched at open instead.
 		clientThread.invokeLater(this::applyLayout);
 	}
 
@@ -458,10 +461,17 @@ public class BankResizerPlugin extends Plugin
 	 */
 	private int resolveColumns()
 	{
-		int limit = BankLayout.maxColumnsFor(availableContainerWidth());
-		int wanted = config.fitToWidth() ? limit : config.columns();
+		if (latchedColumns < 0)
+		{
+			// Fit to width is latched as "as many as possible" rather than as a
+			// number, so that it still follows a client resized while the bank is
+			// open, which is the one case where relaying out is wanted.
+			latchedColumns = config.fitToWidth() ? Integer.MAX_VALUE : config.columns();
+		}
 
-		return Math.max(BankLayout.VANILLA_COLUMNS, Math.min(wanted, limit));
+		int limit = BankLayout.maxColumnsFor(availableContainerWidth());
+
+		return Math.max(BankLayout.VANILLA_COLUMNS, Math.min(latchedColumns, limit));
 	}
 
 	/**
@@ -1056,6 +1066,7 @@ public class BankResizerPlugin extends Plugin
 		modified = false;
 		loggedGeometry = false;
 		loggedItems = false;
+		latchedColumns = -1;
 		appliedColumns = -1;
 		appliedCanvasWidth = -1;
 	}
