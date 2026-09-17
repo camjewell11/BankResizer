@@ -29,6 +29,7 @@ import net.runelite.api.events.ScriptPostFired;
 import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.widgets.Widget;
+import net.runelite.api.widgets.WidgetSizeMode;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
@@ -66,15 +67,21 @@ public class BankResizerPlugin extends Plugin
 	private static final int MAX_PLAUSIBLE_CHROME_WIDTH = 200;
 
 	/**
-	 * Widgets whose width tracks the item container. The tab strip re-centres its
-	 * own icons from its width, so widening it is enough to reflow the tabs.
+	 * Widgets that must be widened by hand, because their width is absolute.
+	 *
+	 * Deliberately short. Most of the bank chrome is sized in {@code MINUS} mode,
+	 * where the stored value is an inset from the parent rather than a width, so
+	 * those widgets follow the window for free. Widening them by hand increases
+	 * their inset and makes them shrink instead: FRAME, ITEMS_CONTAINER and
+	 * BOTTOM all behaved that way before this list was cut down. SCROLLBAR is
+	 * right anchored and moves on its own.
+	 *
+	 * UNIVERSE is the bank window itself. TABS re-centres its own icons from its
+	 * width, so widening it is enough to reflow the tabs.
 	 */
 	private static final int[] WIDTH_TRACKING = {
 		InterfaceID.Bankmain.UNIVERSE,
-		InterfaceID.Bankmain.FRAME,
-		InterfaceID.Bankmain.ITEMS_CONTAINER,
 		InterfaceID.Bankmain.TABS,
-		InterfaceID.Bankmain.BOTTOM,
 	};
 
 	@Inject
@@ -100,6 +107,9 @@ public class BankResizerPlugin extends Plugin
 	 * the user turns the column count back down.
 	 */
 	private boolean modified;
+
+	/** Whether the geometry dump has already run for the current interface load. */
+	private boolean loggedGeometry;
 
 	@Provides
 	BankResizerConfig provideConfig(ConfigManager configManager)
@@ -257,17 +267,21 @@ public class BankResizerPlugin extends Plugin
 
 	/**
 	 * Width of the bank window that is not item grid: borders, and the inset the
-	 * grid sits at. Only trusted when it falls in a plausible range.
+	 * grid sits at. Measured on a live client as 488 minus 460, so 28.
+	 *
+	 * Read from UNIVERSE, which is the bank window and is sized in ABSOLUTE mode.
+	 * FRAME looks like the natural choice but is sized in MINUS mode with a
+	 * stored 0, which yields a meaningless negative number.
 	 */
 	private int measuredChrome()
 	{
-		Widget frame = client.getWidget(InterfaceID.Bankmain.FRAME);
-		if (frame == null)
+		Widget root = client.getWidget(InterfaceID.Bankmain.UNIVERSE);
+		if (root == null || root.getWidthMode() != WidgetSizeMode.ABSOLUTE)
 		{
 			return FALLBACK_CHROME_WIDTH;
 		}
 
-		int chrome = originalWidthOf(frame) - BankLayout.VANILLA_CONTAINER_WIDTH;
+		int chrome = originalWidthOf(root) - BankLayout.VANILLA_CONTAINER_WIDTH;
 		if (chrome < 0 || chrome > MAX_PLAUSIBLE_CHROME_WIDTH)
 		{
 			return FALLBACK_CHROME_WIDTH;
@@ -282,11 +296,14 @@ public class BankResizerPlugin extends Plugin
 	 */
 	private void logGeometry()
 	{
-		if (!log.isDebugEnabled())
+		// Once per interface load. The bank rebuilds several times a second, and
+		// dumping seven widgets on every pass floods the log.
+		if (!log.isDebugEnabled() || loggedGeometry)
 		{
 			return;
 		}
 
+		loggedGeometry = true;
 		log.debug("canvas {}x{}", client.getCanvasWidth(), client.getCanvasHeight());
 		logWidget("UNIVERSE", InterfaceID.Bankmain.UNIVERSE);
 		logWidget("FRAME", InterfaceID.Bankmain.FRAME);
@@ -318,7 +335,13 @@ public class BankResizerPlugin extends Plugin
 			widget.isHidden());
 	}
 
-	/** Applies {@code delta} extra pixels of width to each chrome widget. */
+	/**
+	 * Applies {@code delta} extra pixels of width to each chrome widget.
+	 *
+	 * Skips anything not sized in {@code ABSOLUTE} mode. In the other modes the
+	 * stored value is an inset from the parent rather than a width, so adding to
+	 * it shrinks the widget instead of growing it.
+	 */
 	private void resizeChrome(int delta)
 	{
 		for (int componentId : WIDTH_TRACKING)
@@ -326,6 +349,13 @@ public class BankResizerPlugin extends Plugin
 			Widget widget = client.getWidget(componentId);
 			if (widget == null)
 			{
+				continue;
+			}
+
+			if (widget.getWidthMode() != WidgetSizeMode.ABSOLUTE)
+			{
+				log.debug("Skipping widget {} with width mode {}",
+					componentId, widget.getWidthMode());
 				continue;
 			}
 
@@ -443,6 +473,7 @@ public class BankResizerPlugin extends Plugin
 	{
 		originalWidths.clear();
 		modified = false;
+		loggedGeometry = false;
 	}
 
 	/** Width the widget had before this plugin first touched it. */
