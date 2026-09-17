@@ -1132,7 +1132,6 @@ public class BankResizerPlugin extends Plugin
 			row = entry[3];
 
 			int base = column * entryWidth;
-			int rightmost = furthestOffsetIn(children, entry);
 
 			for (int i = entry[0]; i < entry[1]; i++)
 			{
@@ -1145,9 +1144,8 @@ public class BankResizerPlugin extends Plugin
 
 				int offset = child.getOriginalX() - entry[2];
 
-				// The rightmost part of an entry is its favourite heart, which the
-				// game holds against the entry's right edge.
-				int moved = potionHeartInset >= 0 && offset == rightmost && rightmost > 0
+				// The heart is the one part the game holds against the right edge.
+				int moved = potionHeartInset >= 0 && isFavouriteHeart(child, entryWidth)
 					? base + entryWidth - potionHeartInset
 					: base + offset;
 
@@ -1160,11 +1158,25 @@ public class BankResizerPlugin extends Plugin
 		}
 	}
 
-	/** How far right of its own start the furthest part of one entry sits. */
-	private int furthestOffsetIn(Widget[] children, int[] entry)
+	/**
+	 * Whether this child is an entry's favourite heart.
+	 *
+	 * By what it is, not where it sits. A potion that is not a favourite has no
+	 * heart shown, so in those entries the rightmost thing is the dose text, and
+	 * picking the rightmost child right aligned the text instead and threw it off
+	 * the side. An entry holds exactly three graphics: its backing block, the
+	 * potion icon at item width, and the heart, which is neither.
+	 */
+	private boolean isFavouriteHeart(Widget child, int entryWidth)
 	{
-		int furthest = 0;
+		return child.getType() == WidgetType.GRAPHIC
+			&& child.getOriginalWidth() != entryWidth
+			&& child.getOriginalWidth() != BankLayout.ITEM_WIDTH;
+	}
 
+	/** How far right of its own start an entry's heart sits, or -1 without one. */
+	private int heartOffsetIn(Widget[] children, int[] entry, int entryWidth)
+	{
 		for (int i = entry[0]; i < entry[1]; i++)
 		{
 			Widget child = children[i];
@@ -1174,10 +1186,13 @@ public class BankResizerPlugin extends Plugin
 				continue;
 			}
 
-			furthest = Math.max(furthest, child.getOriginalX() - entry[2]);
+			if (isFavouriteHeart(child, entryWidth))
+			{
+				return child.getOriginalX() - entry[2];
+			}
 		}
 
-		return furthest;
+		return -1;
 	}
 
 	/**
@@ -1211,15 +1226,16 @@ public class BankResizerPlugin extends Plugin
 				continue;
 			}
 
-			int furthest = Math.max(furthestOffsetIn(children, left),
-				furthestOffsetIn(children, right));
+			int furthest = Math.max(heartOffsetIn(children, left, entryWidth),
+				heartOffsetIn(children, right, entryWidth));
 
 			if (furthest > 0 && furthest < pitch)
 			{
 				potionHeartInset = pitch - furthest;
+				return;
 			}
 
-			return;
+			// Neither entry of that row is a favourite, so try the next row.
 		}
 	}
 
