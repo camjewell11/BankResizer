@@ -60,11 +60,14 @@ final class BankGrid
 
 		private final int column;
 
-		private Cell(int index, int row, int column)
+		private final int offsetY;
+
+		private Cell(int index, int row, int column, int offsetY)
 		{
 			this.index = index;
 			this.row = row;
 			this.column = column;
+			this.offsetY = offsetY;
 		}
 
 		int getIndex()
@@ -85,6 +88,15 @@ final class BankGrid
 		boolean isSeparator()
 		{
 			return column == SEPARATOR_COLUMN;
+		}
+
+		/**
+		 * Pixels below the top of its row this child sits, which keeps the rule
+		 * and the heading of one group in the arrangement the game drew them in.
+		 */
+		int getOffsetY()
+		{
+			return offsetY;
 		}
 	}
 
@@ -156,22 +168,37 @@ final class BankGrid
 		int column = 0;
 		int next = 0;
 
+		// The row and the top y of the band being filled, so that a rule and the
+		// heading beneath it share one row instead of costing two.
+		int bandRow = -1;
+		int bandY = 0;
+
 		for (int item : items)
 		{
-			// Any separator the game drew above this item closes the group.
 			while (next < rules.size() && ys[rules.get(next)] < ys[item])
 			{
+				int rule = rules.get(next++);
+
+				if (bandRow >= 0 && ys[rule] - bandY < BankLayout.ROW_PITCH)
+				{
+					cells.add(new Cell(rule, bandRow, SEPARATOR_COLUMN, ys[rule] - bandY));
+					continue;
+				}
+
 				if (column > 0)
 				{
 					column = 0;
 					row++;
 				}
 
-				cells.add(new Cell(rules.get(next++), row, SEPARATOR_COLUMN));
+				bandRow = row;
+				bandY = ys[rule];
+				cells.add(new Cell(rule, row, SEPARATOR_COLUMN, 0));
 				row++;
 			}
 
-			cells.add(new Cell(item, row, column));
+			cells.add(new Cell(item, row, column, 0));
+			bandRow = -1;
 
 			if (++column >= width)
 			{
@@ -180,16 +207,26 @@ final class BankGrid
 			}
 		}
 
-		// Separators below every item, which is where a trailing one belongs.
+		// Furniture below every item, which is where a trailing rule belongs.
 		while (next < rules.size())
 		{
+			int rule = rules.get(next++);
+
+			if (bandRow >= 0 && ys[rule] - bandY < BankLayout.ROW_PITCH)
+			{
+				cells.add(new Cell(rule, bandRow, SEPARATOR_COLUMN, ys[rule] - bandY));
+				continue;
+			}
+
 			if (column > 0)
 			{
 				column = 0;
 				row++;
 			}
 
-			cells.add(new Cell(rules.get(next++), row, SEPARATOR_COLUMN));
+			bandRow = row;
+			bandY = ys[rule];
+			cells.add(new Cell(rule, row, SEPARATOR_COLUMN, 0));
 			row++;
 		}
 

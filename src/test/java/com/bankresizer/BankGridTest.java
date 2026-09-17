@@ -150,10 +150,11 @@ public class BankGridTest
 	}
 
 	@Test
-	public void headingAndRuleForTheSameGroupBothGetTheirOwnRow()
+	public void ruleAndHeadingOfOneGroupShareARow()
 	{
-		// A live group is introduced by a 2px rule and a heading of item height,
-		// both wider than an item. Neither may share a row with the items.
+		// A live group boundary is a 2px rule with a heading just beneath it. Giving
+		// each its own row cost two rows per boundary and showed as a blank gap, so
+		// furniture within one row pitch shares a row and keeps its own offset.
 		BankGrid.Plan plan = BankGrid.plan(
 			new int[]{51, 51, 51, 51},
 			new int[]{0, 804, 797, 799},
@@ -162,8 +163,23 @@ public class BankGridTest
 
 		assertEquals(0, cellFor(plan, 0).getRow());
 		assertEquals(1, cellFor(plan, 2).getRow());
-		assertEquals(2, cellFor(plan, 3).getRow());
-		assertEquals(3, cellFor(plan, 1).getRow());
+		assertEquals(1, cellFor(plan, 3).getRow());
+		assertEquals(0, cellFor(plan, 2).getOffsetY());
+		assertEquals(2, cellFor(plan, 3).getOffsetY());
+		assertEquals(2, cellFor(plan, 1).getRow());
+	}
+
+	@Test
+	public void furnitureFurtherApartThanARowDoesNotShareOne()
+	{
+		BankGrid.Plan plan = BankGrid.plan(
+			new int[]{51, 51, 51},
+			new int[]{900, 0, 100},
+			new boolean[]{false, true, true},
+			8);
+
+		assertEquals(0, cellFor(plan, 1).getRow());
+		assertEquals(1, cellFor(plan, 2).getRow());
 	}
 
 	@Test

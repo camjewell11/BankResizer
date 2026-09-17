@@ -908,7 +908,7 @@ public class BankResizerPlugin extends Plugin
 			if (cell.isSeparator())
 			{
 				child.setOriginalX(BankLayout.START_X);
-				child.setOriginalY(BankLayout.itemY(cell.getRow()));
+				child.setOriginalY(BankLayout.itemY(cell.getRow()) + cell.getOffsetY());
 
 				// Stretch the rules across the wider grid, but leave the headings
 				// at their own width, which is the width of their text.
