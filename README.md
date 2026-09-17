@@ -54,14 +54,6 @@ eight-per-row grid that the plugin cannot change.
 separators, the potion store, group storage, the buttons along the bottom —
 keeps working and stays where it belongs as the bank widens.
 
-## Known limitations
-
-Stepping the column count down to 8 and back up again, with the potion store as
-the last thing you had open, can leave its entries misaligned. Reopening the
-potion store itself puts it right; reopening the bank does not. The store's
-widgets outlive the bank closing, so they can be found part way through someone
-else's arrangement.
-
 ## Compatibility
 
 Tested alongside bank tags, bank tag layouts, Inventory Setups, potion storage
