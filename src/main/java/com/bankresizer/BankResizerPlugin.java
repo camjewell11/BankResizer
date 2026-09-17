@@ -17,6 +17,7 @@
 package com.bankresizer;
 
 import com.google.inject.Provides;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,7 +25,6 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
-import net.runelite.api.Point;
 import net.runelite.api.ScriptID;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.ScriptPostFired;
@@ -110,6 +110,16 @@ public class BankResizerPlugin extends Plugin
 	private final Map<Integer, WidgetSize> originalWidths = new HashMap<>();
 
 	/**
+	 * Ancestors this plugin has resized, held directly rather than looked up.
+	 *
+	 * The outer slot belongs to the layout interface, not the bank, so it outlives
+	 * the bank closing while the bank's own widgets are rebuilt. Without putting it
+	 * back explicitly its widened size gets recaptured as the original next time
+	 * the bank opens, and it creeps wider on every open.
+	 */
+	private final List<Widget> resizedAncestors = new ArrayList<>();
+
+	/**
 	 * A widget's width as it was before this plugin touched it.
 	 *
 	 * Records the rendered width as well as the stored one because they differ for
@@ -178,6 +188,7 @@ public class BankResizerPlugin extends Plugin
 		clientThread.invokeLater(() ->
 		{
 			restoreLayout();
+			restoreAncestors();
 			resetState();
 		});
 	}
@@ -210,6 +221,7 @@ public class BankResizerPlugin extends Plugin
 	{
 		if (event.getGroupId() == InterfaceID.BANKMAIN && event.isUnload())
 		{
+			restoreAncestors();
 			resetState();
 		}
 	}
@@ -359,18 +371,14 @@ public class BankResizerPlugin extends Plugin
 			return BankLayout.VANILLA_CONTAINER_WIDTH;
 		}
 
-		// What the widget tree allows: the narrowest ancestor that will not grow.
+		// The play area, which does not change as the bank grows. Deliberately not
+		// derived from the bank's own width or position: those move when we widen
+		// it, which fed back into the column count and left it oscillating between
+		// nine and ten columns on alternate passes.
+		//
+		// No separate canvas check is needed. The play area sits inside the canvas
+		// already, so a window that fits inside it cannot leave the screen.
 		int maxWindow = BankRoom.measure(root, canvasWidth).getLimit() - 2 * EDGE_MARGIN;
-
-		Point location = root.getCanvasLocation();
-		if (location != null)
-		{
-			// Belt and braces. Even inside a roomy ancestor, a centre anchored
-			// window still has to stay on the canvas.
-			int centre = location.getX() + root.getWidth() / 2;
-			maxWindow = Math.min(maxWindow,
-				BankLayout.maxWindowWidthFor(centre, canvasWidth, EDGE_MARGIN));
-		}
 
 		return maxWindow - measuredChrome();
 	}
@@ -605,6 +613,11 @@ public class BankResizerPlugin extends Plugin
 				node.setOriginalHeight(playAreaHeight);
 			}
 
+			if (!resizedAncestors.contains(node))
+			{
+				resizedAncestors.add(node);
+			}
+
 			node.revalidate();
 		}
 
@@ -786,6 +799,33 @@ public class BankResizerPlugin extends Plugin
 	}
 
 	/**
+	 * Puts every resized ancestor back to the size it had before this plugin
+	 * touched it.
+	 *
+	 * Works off held references rather than the widget tree, because this runs
+	 * while the bank interface is being torn down and cannot be looked up.
+	 */
+	private void restoreAncestors()
+	{
+		for (Widget node : resizedAncestors)
+		{
+			WidgetSize size = originalWidths.get(node.getId());
+			if (size == null)
+			{
+				continue;
+			}
+
+			node.setWidthMode(WidgetSizeMode.ABSOLUTE);
+			node.setOriginalWidth(size.renderedWidth);
+			node.setHeightMode(WidgetSizeMode.ABSOLUTE);
+			node.setOriginalHeight(size.renderedHeight);
+			node.revalidate();
+		}
+
+		resizedAncestors.clear();
+	}
+
+	/**
 	 * Forgets everything cached about the current bank interface. Called whenever
 	 * the interface is torn down, because the widget tree is rebuilt from scratch
 	 * and the captured widths no longer refer to anything.
@@ -793,6 +833,7 @@ public class BankResizerPlugin extends Plugin
 	private void resetState()
 	{
 		originalWidths.clear();
+		resizedAncestors.clear();
 		modified = false;
 		loggedGeometry = false;
 		appliedColumns = -1;

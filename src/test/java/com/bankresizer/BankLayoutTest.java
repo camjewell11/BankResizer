@@ -121,64 +121,6 @@ public class BankLayoutTest
 	}
 
 	@Test
-	public void offCentreBankIsBoundedByTheNearerEdge()
-	{
-		// Measured on a live client: the bank sits centred at x=362 on a 940 wide
-		// canvas, so it can reach 724 wide, not 940. Bounding by canvas width
-		// instead would let the window run off the left edge.
-		assertEquals(716, BankLayout.maxWindowWidthFor(362, 940, 4));
-	}
-
-	@Test
-	public void centredBankGetsNearlyTheWholeCanvas()
-	{
-		assertEquals(932, BankLayout.maxWindowWidthFor(470, 940, 4));
-	}
-
-	@Test
-	public void bankNearAnEdgeGetsVeryLittleRoom()
-	{
-		assertEquals(192, BankLayout.maxWindowWidthFor(100, 940, 4));
-	}
-
-	@Test
-	public void maxWindowWidthIsNeverNegative()
-	{
-		// A bank centred hard against an edge must clamp to zero rather than
-		// return a negative width that would underflow the column maths.
-		assertEquals(0, BankLayout.maxWindowWidthFor(0, 940, 4));
-		assertEquals(0, BankLayout.maxWindowWidthFor(940, 940, 4));
-		assertEquals(0, BankLayout.maxWindowWidthFor(2, 940, 4));
-	}
-
-	@Test
-	public void maxWindowWidthIsSymmetricAboutTheCentre()
-	{
-		for (int offset = 0; offset <= 400; offset += 25)
-		{
-			assertEquals("offset=" + offset,
-				BankLayout.maxWindowWidthFor(470 - offset, 940, 4),
-				BankLayout.maxWindowWidthFor(470 + offset, 940, 4));
-		}
-	}
-
-	@Test
-	public void boundedWindowNeverLeavesTheCanvas()
-	{
-		// The property that actually matters: whatever width we allow, drawing it
-		// centred must keep both edges inside the canvas.
-		int canvas = 940;
-		for (int centre = 0; centre <= canvas; centre += 10)
-		{
-			int width = BankLayout.maxWindowWidthFor(centre, canvas, 4);
-			assertTrue("left edge off canvas at centre=" + centre,
-				centre - width / 2 >= 0);
-			assertTrue("right edge off canvas at centre=" + centre,
-				centre + width / 2 <= canvas);
-		}
-	}
-
-	@Test
 	public void emptyGridHasNoScroll()
 	{
 		assertEquals(0, BankLayout.scrollHeightFor(0));
