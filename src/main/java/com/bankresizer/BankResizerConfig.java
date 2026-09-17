@@ -44,11 +44,14 @@ public interface BankResizerConfig extends Config
 	@ConfigItem(
 		keyName = "columns",
 		name = "Columns",
-		description = "Items per row in the bank. Capped at whatever fits in your client window. 8 is vanilla.",
+		description = "Items per row in the bank. Capped at whatever fits in your client window."
+			+ " 8 is the unmodified game layout, and leaves the bank untouched.",
 		position = 1
 	)
 	default int columns()
 	{
-		return 10;
+		// Defaults to the unmodified game layout so that installing the plugin
+		// changes nothing until the user asks for it.
+		return BankLayout.VANILLA_COLUMNS;
 	}
 }

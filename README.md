@@ -10,10 +10,15 @@ changes only the width, and leaves item icons at their normal size.
 
 ## Configuration
 
-| Setting | Effect |
-| --- | --- |
-| Fit to window width | Use as many columns as the client window allows. Overrides the column count. |
-| Columns | Items per row. 8 matches the unmodified client. |
+| Setting | Default | Effect |
+| --- | --- | --- |
+| Fit to window width | off | Use as many columns as the client window allows. Overrides the column count. |
+| Columns | 8 | Items per row. 8 is the unmodified game layout. |
+
+The plugin ships doing nothing. At 8 columns it touches no widget at all, because
+the game has already drawn that layout correctly, so installing it changes
+nothing until you raise the column count. Turning the count back down to 8 undoes
+its own changes and then goes idle again.
 
 The column count is always capped at what fits inside the client window, so the
 bank cannot be pushed off screen. In fixed mode the game area is only 765 pixels
@@ -47,6 +52,10 @@ Widths are always assigned as a captured original plus a delta, never accumulate
 because the outer frame is sized once when the interface initialises while the
 item container is resized on every rebuild.
 
+The scrollbar rebuild is deferred with `clientThread.invokeLater`. The layout runs
+from a script event, so the script VM is still on the stack, and calling back into
+it directly throws `scripts are not reentrant` and takes the client down.
+
 ## Building
 
 Requires JDK 11 or newer. The compile target is Java 11 to match the client.
@@ -62,9 +71,10 @@ and are the thing that should fail first if Jagex ever changes the bank layout.
 
 ## Status
 
-The layout maths is verified by unit tests. The set of chrome widgets that get
-widened still needs confirmation against a running client, and tab separator
-placement is approximate. See the widget list at the top of `BankResizerPlugin`.
+The layout maths is verified by unit tests. Still unconfirmed against a running
+client: the set of chrome widgets that get widened, the chrome width used to cap
+the column count, and tab separator placement. Enable debug logging to get a dump
+of the real widget geometry on each layout pass.
 
 ## Compliance
 

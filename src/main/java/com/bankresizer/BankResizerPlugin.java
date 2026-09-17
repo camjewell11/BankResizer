@@ -41,8 +41,7 @@ import net.runelite.client.plugins.PluginDescriptor;
 	name = "Bank Resizer",
 	description = "Widen the bank interface to show more columns of items",
 	tags = {"bank", "interface", "ui", "resize", "columns", "width"},
-	internalName = "bank-resizer",
-	enabledByDefault = false
+	internalName = "bank-resizer"
 )
 public class BankResizerPlugin extends Plugin
 {
@@ -55,6 +54,16 @@ public class BankResizerPlugin extends Plugin
 
 	/** Pixels kept clear between the widened bank and the edge of the viewport. */
 	private static final int EDGE_MARGIN = 4;
+
+	/**
+	 * Chrome width assumed when the bank frame cannot be measured. Deliberately
+	 * generous: overestimating costs a column, underestimating pushes the bank
+	 * past the edge of the client.
+	 */
+	private static final int FALLBACK_CHROME_WIDTH = 60;
+
+	/** Above this, a measured chrome width is treated as a bad reading. */
+	private static final int MAX_PLAUSIBLE_CHROME_WIDTH = 200;
 
 	/**
 	 * Widgets whose width tracks the item container. The tab strip re-centres its
@@ -85,6 +94,13 @@ public class BankResizerPlugin extends Plugin
 	 */
 	private final Map<Integer, Integer> originalWidths = new HashMap<>();
 
+	/**
+	 * Whether this plugin currently has the bank in a non-vanilla layout. Lets the
+	 * vanilla column count be a genuine no-op while still undoing our own work if
+	 * the user turns the column count back down.
+	 */
+	private boolean modified;
+
 	@Provides
 	BankResizerConfig provideConfig(ConfigManager configManager)
 	{
@@ -103,7 +119,7 @@ public class BankResizerPlugin extends Plugin
 		clientThread.invokeLater(() ->
 		{
 			restoreLayout();
-			originalWidths.clear();
+			resetState();
 		});
 	}
 
@@ -135,7 +151,7 @@ public class BankResizerPlugin extends Plugin
 	{
 		if (event.getGroupId() == InterfaceID.BANKMAIN && event.isUnload())
 		{
-			originalWidths.clear();
+			resetState();
 		}
 	}
 
@@ -144,7 +160,7 @@ public class BankResizerPlugin extends Plugin
 	{
 		if (event.getGameState() == GameState.LOGIN_SCREEN)
 		{
-			originalWidths.clear();
+			resetState();
 		}
 	}
 
@@ -152,6 +168,10 @@ public class BankResizerPlugin extends Plugin
 	 * Widens the bank chrome and lays the item grid out again at the configured
 	 * column count. Safe to call when the bank is closed, in which case it does
 	 * nothing.
+	 *
+	 * At the vanilla column count this touches no widget at all. The game has
+	 * already drawn that layout correctly, so the plugin stays invisible until
+	 * the user actually asks for more columns.
 	 */
 	private void applyLayout()
 	{
@@ -162,15 +182,29 @@ public class BankResizerPlugin extends Plugin
 		}
 
 		int columns = resolveColumns();
+		if (columns == BankLayout.VANILLA_COLUMNS)
+		{
+			// Only undo our own work if there is any, then leave the bank alone.
+			if (modified)
+			{
+				restoreLayout();
+				modified = false;
+			}
+
+			return;
+		}
+
 		int targetWidth = BankLayout.containerWidthFor(columns);
 		int delta = targetWidth - BankLayout.VANILLA_CONTAINER_WIDTH;
 
 		log.debug("Laying out bank at {} columns, container width {} (delta {})",
 			columns, targetWidth, delta);
+		logGeometry();
 
 		resizeChrome(delta);
 		setWidth(items, targetWidth);
 		layoutItems(items, columns, targetWidth);
+		modified = true;
 	}
 
 	/** Restores every widened widget and puts the grid back to vanilla columns. */
@@ -200,25 +234,88 @@ public class BankResizerPlugin extends Plugin
 	}
 
 	/**
-	 * How wide the item container is allowed to become. Derived by measuring the
-	 * bank's own non-grid chrome rather than hardcoding it, so it stays correct
-	 * if the interface changes.
+	 * How wide the item container is allowed to become.
+	 *
+	 * The bound is the client canvas, not any bank widget. Measuring the bank's
+	 * own root is circular: it is an interface layer whose width is not the width
+	 * of the visible bank window, which made this collapse to vanilla.
+	 *
+	 * Chrome is taken from the bank frame where that looks sane, and otherwise
+	 * falls back to a conservative constant, so a surprising widget tree costs a
+	 * column or two rather than pushing the bank off screen.
 	 */
 	private int availableContainerWidth()
 	{
-		Widget root = client.getWidget(InterfaceID.Bankmain.UNIVERSE);
-		if (root == null)
+		int canvasWidth = client.getCanvasWidth();
+		if (canvasWidth <= 0)
 		{
 			return BankLayout.VANILLA_CONTAINER_WIDTH;
 		}
 
-		Widget parent = root.getParent();
-		int bound = parent != null ? parent.getWidth() : client.getCanvasWidth();
+		return canvasWidth - measuredChrome() - 2 * EDGE_MARGIN;
+	}
 
-		// Everything in the bank window that is not the item grid.
-		int chrome = originalWidthOf(root) - BankLayout.VANILLA_CONTAINER_WIDTH;
+	/**
+	 * Width of the bank window that is not item grid: borders, and the inset the
+	 * grid sits at. Only trusted when it falls in a plausible range.
+	 */
+	private int measuredChrome()
+	{
+		Widget frame = client.getWidget(InterfaceID.Bankmain.FRAME);
+		if (frame == null)
+		{
+			return FALLBACK_CHROME_WIDTH;
+		}
 
-		return bound - chrome - EDGE_MARGIN;
+		int chrome = originalWidthOf(frame) - BankLayout.VANILLA_CONTAINER_WIDTH;
+		if (chrome < 0 || chrome > MAX_PLAUSIBLE_CHROME_WIDTH)
+		{
+			return FALLBACK_CHROME_WIDTH;
+		}
+
+		return chrome;
+	}
+
+	/**
+	 * Dumps the geometry this plugin depends on. Debug only, and only while the
+	 * widget set is still being confirmed against a running client.
+	 */
+	private void logGeometry()
+	{
+		if (!log.isDebugEnabled())
+		{
+			return;
+		}
+
+		log.debug("canvas {}x{}", client.getCanvasWidth(), client.getCanvasHeight());
+		logWidget("UNIVERSE", InterfaceID.Bankmain.UNIVERSE);
+		logWidget("FRAME", InterfaceID.Bankmain.FRAME);
+		logWidget("ITEMS_CONTAINER", InterfaceID.Bankmain.ITEMS_CONTAINER);
+		logWidget("ITEMS", InterfaceID.Bankmain.ITEMS);
+		logWidget("TABS", InterfaceID.Bankmain.TABS);
+		logWidget("BOTTOM", InterfaceID.Bankmain.BOTTOM);
+		logWidget("SCROLLBAR", InterfaceID.Bankmain.SCROLLBAR);
+	}
+
+	private void logWidget(String label, int componentId)
+	{
+		Widget widget = client.getWidget(componentId);
+		if (widget == null)
+		{
+			log.debug("  {}: null", label);
+			return;
+		}
+
+		log.debug("  {}: origW={} w={} origX={} x={} canvasX={} wMode={} xMode={} hidden={}",
+			label,
+			widget.getOriginalWidth(),
+			widget.getWidth(),
+			widget.getOriginalX(),
+			widget.getRelativeX(),
+			widget.getCanvasLocation() == null ? -1 : widget.getCanvasLocation().getX(),
+			widget.getWidthMode(),
+			widget.getXPositionMode(),
+			widget.isHidden());
 	}
 
 	/** Applies {@code delta} extra pixels of width to each chrome widget. */
@@ -305,14 +402,25 @@ public class BankResizerPlugin extends Plugin
 	/**
 	 * Sets the scroll region and asks the game to rebuild the scrollbar so the
 	 * thumb matches the new content height.
+	 *
+	 * The scrollbar rebuild has to be deferred. This runs from a script event, so
+	 * the script VM is still on the stack, and calling into it again throws
+	 * "scripts are not reentrant".
 	 */
 	private void applyScroll(Widget items, int scrollHeight)
 	{
 		items.setScrollHeight(scrollHeight);
 		items.revalidateScroll();
 
+		clientThread.invokeLater(() -> rebuildScrollbar(scrollHeight));
+	}
+
+	/** Runs the game's own scrollbar rebuild against the new content height. */
+	private void rebuildScrollbar(int scrollHeight)
+	{
+		Widget items = client.getWidget(InterfaceID.Bankmain.ITEMS);
 		Widget scrollbar = client.getWidget(InterfaceID.Bankmain.SCROLLBAR);
-		if (scrollbar == null)
+		if (items == null || scrollbar == null || items.isHidden())
 		{
 			return;
 		}
@@ -324,6 +432,17 @@ public class BankResizerPlugin extends Plugin
 			InterfaceID.Bankmain.SCROLLBAR,
 			InterfaceID.Bankmain.ITEMS,
 			scrollY);
+	}
+
+	/**
+	 * Forgets everything cached about the current bank interface. Called whenever
+	 * the interface is torn down, because the widget tree is rebuilt from scratch
+	 * and the captured widths no longer refer to anything.
+	 */
+	private void resetState()
+	{
+		originalWidths.clear();
+		modified = false;
 	}
 
 	/** Width the widget had before this plugin first touched it. */
