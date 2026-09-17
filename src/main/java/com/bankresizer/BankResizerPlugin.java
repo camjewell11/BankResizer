@@ -1029,23 +1029,16 @@ public class BankResizerPlugin extends Plugin
 	 * strip down its left uncovered with the bank showing through.
 	 *
 	 * The game script sizes each entry from the container width but lays the two
-	 * columns out on a pitch fixed at the vanilla width. Measured live at a
-	 * container of 521: entries 252 wide at x=0 and x=204, so each overlapped its
-	 * neighbour by 48px. At the vanilla 425 the two agree, which is why an
-	 * unmodified client never shows this.
+	 * columns out on a pitch fixed at the vanilla width, so at a container of 521
+	 * the entries come out 252 wide on a 204 pitch and overlap by 48px. At the
+	 * vanilla 425 the two agree, which is why an unmodified client never shows it.
 	 *
-	 * A column comes from the entry's place within its row, where a row is the
-	 * entries sharing a y. Two earlier attempts took it from something less solid.
-	 * Reading it from the entry's current x is circular, because that is what this
-	 * method sets, and the store's widgets outlive the bank closing, so a reopen
-	 * mixed positions the script had set with positions set here. Counting entries
-	 * instead assumed the columns alternate all the way down, but each section
-	 * starts its grid again, so a section with an odd number of entries flipped
-	 * every row after it and put both entries of a row in the same column, one
-	 * hidden behind the other.
-	 *
-	 * The y of an entry is never changed here, which is what makes it safe to
-	 * group by.
+	 * Nothing here trusts an entry to be where it was left. The store's widgets
+	 * outlive the bank closing, the game relays some of them on its own schedule,
+	 * and another plugin may reorder them, so an entry can be found part way
+	 * through someone else's arrangement. A column comes from the entry's place in
+	 * its row, and the offsets inside an entry come from what most entries agree
+	 * on, so a store found in a bad state is put right rather than carried forward.
 	 */
 	private void spreadPotionEntries()
 	{
@@ -1061,26 +1054,10 @@ public class BankResizerPlugin extends Plugin
 			return;
 		}
 
-		// An entry is as wide as its backing graphic, the widest thing the script
-		// sizes from the container.
-		int entryWidth = 0;
-		for (Widget child : children)
-		{
-			if (child != null && !child.isSelfHidden()
-				&& child.getOriginalHeight() <= BankLayout.ROW_PITCH
-				&& isEntryBackground(child))
-			{
-				entryWidth = Math.max(entryWidth, child.getOriginalWidth());
-			}
-		}
-
-		if (entryWidth <= 0)
-		{
-			return;
-		}
-
-		// Each entry as {first child, one past its last child, x, y}.
+		// Each entry as {first child, one past its last, block x, block y}.
 		List<int[]> entries = new ArrayList<>();
+		int entryWidth = 0;
+
 		for (int i = 0; i < children.length; i++)
 		{
 			Widget child = children[i];
@@ -1099,10 +1076,11 @@ public class BankResizerPlugin extends Plugin
 
 				entries.add(new int[]{i, children.length, child.getOriginalX(),
 					child.getOriginalY()});
+				entryWidth = Math.max(entryWidth, child.getOriginalWidth());
 			}
 		}
 
-		if (entries.size() < 2)
+		if (entries.size() < 2 || entryWidth <= 0)
 		{
 			return;
 		}
@@ -1114,7 +1092,17 @@ public class BankResizerPlugin extends Plugin
 			? Integer.compare(a[3], b[3])
 			: a[2] != b[2] ? Integer.compare(a[2], b[2]) : Integer.compare(a[0], b[0]));
 
-		int heartInset = heartInsetFrom(children, byRow);
+		// Every entry is built the same way, so the offset of each part is taken as
+		// the one most of them agree on. Earlier versions measured each entry
+		// against its own block, which carried that entry's damage forward: an
+		// entry left crooked by a previous pass stayed crooked, and its icon and
+		// text drifted behind the neighbouring column. A handful of crooked entries
+		// cannot outvote the rest, so they are put right instead.
+		int icon = commonOffset(children, entries, Part.ICON);
+		int text = commonOffset(children, entries, Part.TEXT);
+		int heart = commonOffset(children, entries, Part.HEART);
+		int pitch = columnPitch(byRow);
+		int inset = pitch > 0 && heart > 0 && heart < pitch ? pitch - heart : -1;
 
 		int column = 0;
 		int row = Integer.MIN_VALUE;
@@ -1135,13 +1123,7 @@ public class BankResizerPlugin extends Plugin
 					continue;
 				}
 
-				int offset = child.getOriginalX() - entry[2];
-
-				// The heart is the one part the game holds against the right edge.
-				int moved = heartInset >= 0 && isFavouriteHeart(child)
-					? base + entryWidth - heartInset
-					: base + offset;
-
+				int moved = base + offsetFor(child, icon, text, heart, inset, entryWidth);
 				if (moved != child.getOriginalX())
 				{
 					child.setOriginalX(moved);
@@ -1151,104 +1133,109 @@ public class BankResizerPlugin extends Plugin
 		}
 	}
 
-	/**
-	 * Whether this child is an entry's favourite heart.
-	 *
-	 * By what it is, not where it sits. A potion that is not a favourite has no
-	 * heart shown, so in those entries the rightmost thing is the dose text, and
-	 * picking the rightmost child right aligned the text instead and threw it off
-	 * the side. An entry holds exactly three graphics: its backing block, the
-	 * potion icon at item width, and the heart, which is neither.
-	 */
-	private boolean isFavouriteHeart(Widget child)
+	/** The parts an entry is built from, told apart by size and type. */
+	private enum Part
 	{
-		return child.getType() == WidgetType.GRAPHIC
-			&& child.getOriginalWidth() < BankLayout.ITEM_WIDTH;
+		BLOCK, ICON, TEXT, HEART
 	}
 
-	/**
-	 * Whether this child is the block an entry is drawn on.
-	 *
-	 * By being wider than an item icon, not by matching the widest block found.
-	 * The store's widgets outlive the bank closing, so stepping through column
-	 * counts leaves blocks at a mix of widths; any that was not the widest then
-	 * failed to be recognised as an entry at all, and its icon and text were
-	 * measured against the entry before it and placed off to the side.
-	 *
-	 * The three graphics of an entry are told apart by size alone: this block is
-	 * wider than an item, the potion icon is exactly an item wide, and the
-	 * favourite heart is smaller.
-	 */
+	private Part partOf(Widget child)
+	{
+		if (child.getType() != WidgetType.GRAPHIC)
+		{
+			return Part.TEXT;
+		}
+
+		if (child.getOriginalWidth() > BankLayout.ITEM_WIDTH)
+		{
+			return Part.BLOCK;
+		}
+
+		return child.getOriginalWidth() == BankLayout.ITEM_WIDTH ? Part.ICON : Part.HEART;
+	}
+
 	private boolean isEntryBackground(Widget child)
 	{
-		return child.getType() == WidgetType.GRAPHIC
-			&& child.getOriginalWidth() > BankLayout.ITEM_WIDTH;
+		return partOf(child) == Part.BLOCK;
 	}
 
-	/** How far right of its own start an entry's heart sits, or -1 without one. */
-	private int heartOffsetIn(Widget[] children, int[] entry)
+	private boolean isFavouriteHeart(Widget child)
 	{
-		for (int i = entry[0]; i < entry[1]; i++)
-		{
-			Widget child = children[i];
-			if (child == null || child.isSelfHidden()
-				|| child.getOriginalHeight() > BankLayout.ROW_PITCH)
-			{
-				continue;
-			}
+		return partOf(child) == Part.HEART;
+	}
 
-			if (isFavouriteHeart(child))
+	/** Where in its entry a part belongs, once the entry starts at zero. */
+	private int offsetFor(Widget child, int icon, int text, int heart, int inset, int entryWidth)
+	{
+		switch (partOf(child))
+		{
+			case BLOCK:
+				return 0;
+
+			case ICON:
+				return icon;
+
+			case HEART:
+				// The one part the game holds against the entry's right edge.
+				return inset >= 0 ? entryWidth - inset : heart;
+
+			default:
+				return text;
+		}
+	}
+
+	/** The offset most entries put {@code part} at, or 0 if none agree. */
+	private int commonOffset(Widget[] children, List<int[]> entries, Part part)
+	{
+		Map<Integer, Integer> counts = new HashMap<>();
+
+		for (int[] entry : entries)
+		{
+			for (int i = entry[0]; i < entry[1]; i++)
 			{
-				return child.getOriginalX() - entry[2];
+				Widget child = children[i];
+				if (child == null || child.isSelfHidden()
+					|| child.getOriginalHeight() > BankLayout.ROW_PITCH
+					|| partOf(child) != part)
+				{
+					continue;
+				}
+
+				counts.merge(child.getOriginalX() - entry[2], 1, Integer::sum);
 			}
 		}
 
-		return -1;
+		int best = 0;
+		int seen = 0;
+
+		for (Map.Entry<Integer, Integer> offset : counts.entrySet())
+		{
+			if (offset.getValue() > seen && offset.getKey() >= 0)
+			{
+				seen = offset.getValue();
+				best = offset.getKey();
+			}
+		}
+
+		return best;
 	}
 
-	/**
-	 * How far the favourite heart sits from the right of its entry.
-	 *
-	 * Worked out again on every pass rather than kept, because the answer depends
-	 * on the spacing the entries currently have and that spacing changes. Measured
-	 * against the gap between two entries of one row, the value comes out the same
-	 * whether the game has just laid the store out or this method already has:
-	 * at the game's 204 pitch a heart at 188 gives 16, and once the entries are
-	 * 252 apart the same heart sits at 236, which gives 16 again.
-	 *
-	 * Keeping it was what broke changing the column count with the store open. The
-	 * value captured under the old width was then applied against the new one.
-	 */
-	private int heartInsetFrom(Widget[] children, List<int[]> byRow)
+	/** Gap between the two entries of a row, or 0 when no row holds two. */
+	private int columnPitch(List<int[]> byRow)
 	{
 		for (int i = 0; i + 1 < byRow.size(); i++)
 		{
-			int[] left = byRow.get(i);
-			int[] right = byRow.get(i + 1);
-
-			if (left[3] != right[3])
+			if (byRow.get(i)[3] == byRow.get(i + 1)[3])
 			{
-				continue;
+				int pitch = byRow.get(i + 1)[2] - byRow.get(i)[2];
+				if (pitch > 0)
+				{
+					return pitch;
+				}
 			}
-
-			int pitch = right[2] - left[2];
-			if (pitch <= 0)
-			{
-				continue;
-			}
-
-			int heart = Math.max(heartOffsetIn(children, left),
-				heartOffsetIn(children, right));
-
-			if (heart > 0 && heart < pitch)
-			{
-				return pitch - heart;
-			}
-
-			// Neither entry of that row is a favourite, so try the next row.
 		}
 
-		return -1;
+		return 0;
 	}
 
 	/**
