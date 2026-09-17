@@ -210,11 +210,6 @@ public class BankResizerPlugin extends Plugin
 	/** Geometry of the potion store last dumped, for the same reason. */
 	private String loggedPotionShape;
 
-	/**
-	 * Distance the favourite heart keeps from the right of its entry, or -1 until
-	 * the store has been seen as the game laid it out.
-	 */
-	private int potionHeartInset = -1;
 
 	/** Layout passes since the last timing report. */
 	private int passes;
@@ -378,7 +373,6 @@ public class BankResizerPlugin extends Plugin
 			latchedColumns = BankLayout.VANILLA_COLUMNS;
 			appliedCanvasWidth = canvasWidth;
 			appliedCanvasHeight = canvasHeight;
-			potionHeartInset = -1;
 
 			// One redraw so the bank is usable straight away rather than at the
 			// next rebuild.
@@ -1121,7 +1115,7 @@ public class BankResizerPlugin extends Plugin
 			? Integer.compare(a[3], b[3])
 			: a[2] != b[2] ? Integer.compare(a[2], b[2]) : Integer.compare(a[0], b[0]));
 
-		captureHeartInset(children, byRow, entryWidth);
+		int heartInset = heartInsetFrom(children, byRow);
 
 		int column = 0;
 		int row = Integer.MIN_VALUE;
@@ -1145,8 +1139,8 @@ public class BankResizerPlugin extends Plugin
 				int offset = child.getOriginalX() - entry[2];
 
 				// The heart is the one part the game holds against the right edge.
-				int moved = potionHeartInset >= 0 && isFavouriteHeart(child, entryWidth)
-					? base + entryWidth - potionHeartInset
+				int moved = heartInset >= 0 && isFavouriteHeart(child, entryWidth)
+					? base + entryWidth - heartInset
 					: base + offset;
 
 				if (moved != child.getOriginalX())
@@ -1196,19 +1190,19 @@ public class BankResizerPlugin extends Plugin
 	}
 
 	/**
-	 * Works out how far the favourite heart sits from the right of its entry.
+	 * How far the favourite heart sits from the right of its entry.
 	 *
-	 * Measured against the pitch the game laid the columns out on, not against the
-	 * width the entries currently have. Measuring against the current width was a
-	 * race: on a pass where the entries had already been widened it produced an
-	 * inset that put the heart back exactly where it started, so the alignment
-	 * quietly did nothing. Which pass ran first depended on what else was driving
-	 * the store, so it worked alone and failed beside a plugin that reorders it.
+	 * Worked out again on every pass rather than kept, because the answer depends
+	 * on the spacing the entries currently have and that spacing changes. Measured
+	 * against the gap between two entries of one row, the value comes out the same
+	 * whether the game has just laid the store out or this method already has:
+	 * at the game's 204 pitch a heart at 188 gives 16, and once the entries are
+	 * 252 apart the same heart sits at 236, which gives 16 again.
 	 *
-	 * Only a row still in the game's own state can answer this, which is a row
-	 * whose two entries are a pitch apart that is not their width.
+	 * Keeping it was what broke changing the column count with the store open. The
+	 * value captured under the old width was then applied against the new one.
 	 */
-	private void captureHeartInset(Widget[] children, List<int[]> byRow, int entryWidth)
+	private int heartInsetFrom(Widget[] children, List<int[]> byRow)
 	{
 		for (int i = 0; i + 1 < byRow.size(); i++)
 		{
@@ -1221,22 +1215,23 @@ public class BankResizerPlugin extends Plugin
 			}
 
 			int pitch = right[2] - left[2];
-			if (pitch <= 0 || pitch == entryWidth)
+			if (pitch <= 0)
 			{
 				continue;
 			}
 
-			int furthest = Math.max(heartOffsetIn(children, left, entryWidth),
-				heartOffsetIn(children, right, entryWidth));
+			int heart = Math.max(heartOffsetIn(children, left, pitch),
+				heartOffsetIn(children, right, pitch));
 
-			if (furthest > 0 && furthest < pitch)
+			if (heart > 0 && heart < pitch)
 			{
-				potionHeartInset = pitch - furthest;
-				return;
+				return pitch - heart;
 			}
 
 			// Neither entry of that row is a favourite, so try the next row.
 		}
+
+		return -1;
 	}
 
 	/**
