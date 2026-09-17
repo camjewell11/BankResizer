@@ -249,6 +249,9 @@ public class BankResizerPlugin extends Plugin
 
 	private int appliedCanvasWidth = -1;
 
+	/** Canvas height the current layout was worked out against. */
+	private int appliedCanvasHeight = -1;
+
 	@Provides
 	BankResizerConfig provideConfig(ConfigManager configManager)
 	{
@@ -354,6 +357,39 @@ public class BankResizerPlugin extends Plugin
 
 		int targetWidth = BankLayout.containerWidthFor(columns);
 		int canvasWidth = client.getCanvasWidth();
+		int canvasHeight = client.getCanvasHeight();
+
+		// A resize invalidates everything measured so far: the play area, the
+		// ancestor widths, and the sizes saved to undo them by. Rather than try to
+		// re-derive all of it against a bank the client is midway through relaying
+		// out, hand the bank back to the game and stay out of the way until it is
+		// reopened. Otherwise the bank can be left in a state that has to be closed
+		// with a hotkey before it works again.
+		if (modified && (canvasWidth != appliedCanvasWidth || canvasHeight != appliedCanvasHeight))
+		{
+			log.debug("Client resized to {}x{}; returning the bank to {} columns until reopened",
+				canvasWidth, canvasHeight, BankLayout.VANILLA_COLUMNS);
+
+			restoreLayout();
+			restoreAncestors();
+			originalWidths.clear();
+
+			modified = false;
+			latchedColumns = BankLayout.VANILLA_COLUMNS;
+			appliedCanvasWidth = canvasWidth;
+			appliedCanvasHeight = canvasHeight;
+			potionHeartInset = -1;
+
+			// One redraw so the bank is usable straight away rather than at the
+			// next rebuild.
+			Widget root = client.getWidget(InterfaceID.Bankmain.UNIVERSE);
+			if (root != null)
+			{
+				root.revalidateScroll();
+			}
+
+			return;
+		}
 
 		if (isUpToDate(items, columns, canvasWidth, targetWidth))
 		{
@@ -408,6 +444,7 @@ public class BankResizerPlugin extends Plugin
 		modified = true;
 		appliedColumns = columns;
 		appliedCanvasWidth = canvasWidth;
+		appliedCanvasHeight = canvasHeight;
 	}
 
 	/**
@@ -448,6 +485,12 @@ public class BankResizerPlugin extends Plugin
 		if (canvasWidth != appliedCanvasWidth)
 		{
 			return "canvas changed from " + appliedCanvasWidth + " to " + canvasWidth;
+		}
+
+		if (client.getCanvasHeight() != appliedCanvasHeight)
+		{
+			return "canvas height changed from " + appliedCanvasHeight
+				+ " to " + client.getCanvasHeight();
 		}
 
 		if (items.getOriginalWidth() != targetWidth)
@@ -1428,6 +1471,7 @@ public class BankResizerPlugin extends Plugin
 		latchedColumns = -1;
 		appliedColumns = -1;
 		appliedCanvasWidth = -1;
+		appliedCanvasHeight = -1;
 	}
 
 	/** Size the widget had before this plugin first touched it, captured once. */
