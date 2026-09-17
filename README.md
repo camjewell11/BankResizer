@@ -5,8 +5,10 @@ more columns of items.
 
 The bank already grows taller with the client window, because the game lays its
 item container out with a height of `parent - 81`. It never grows wider, because
-that same layout step fixes the width at an absolute 460 pixels. This plugin
-changes only the width, and leaves item icons at their normal size.
+that same layout step fixes the width at an absolute 460 pixels.
+
+This plugin sets both, in whole rows and columns, and leaves item icons at their
+normal size.
 
 ## Configuration
 
@@ -26,10 +28,8 @@ the game has already drawn that layout correctly, so installing it changes
 nothing until you raise the column count. Turning the count back down to 8 undoes
 its own changes and then goes idle again.
 
-The column count is always capped at what fits inside the client window, so the
-bank cannot be pushed off screen. In fixed mode the game area is only 765 pixels
-wide, so expect few or no extra columns there. Resizable mode is where this
-plugin is useful.
+In fixed mode the game area is only 765 pixels wide, so expect few or no extra
+columns there. Resizable mode is where this plugin is useful.
 
 ## How it works
 
