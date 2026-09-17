@@ -169,9 +169,15 @@ public class BankResizerPlugin extends Plugin
 
 		private final int originalX;
 
+		private final int xPositionMode;
+
+		private final int renderedX;
+
 		private WidgetSize(Widget widget)
 		{
 			this.originalX = widget.getOriginalX();
+			this.xPositionMode = widget.getXPositionMode();
+			this.renderedX = widget.getRelativeX();
 			this.originalWidth = widget.getOriginalWidth();
 			this.widthMode = widget.getWidthMode();
 			this.renderedWidth = widget.getWidth();
@@ -239,6 +245,17 @@ public class BankResizerPlugin extends Plugin
 	{
 		if (!BankResizerConfig.GROUP.equals(event.getGroup()))
 		{
+			return;
+		}
+
+		// Relaying out a bank that is already open leaves it half rebuilt: the
+		// game positions its own widgets only when it builds the interface, so a
+		// change made mid-session applied to some of them and not others. Wait for
+		// the next open, when the game has drawn a clean layout to work from.
+		Widget items = client.getWidget(InterfaceID.Bankmain.ITEMS);
+		if (items != null && !items.isHidden())
+		{
+			log.debug("Bank is open; the new column count applies when it is reopened");
 			return;
 		}
 
@@ -318,6 +335,7 @@ public class BankResizerPlugin extends Plugin
 		}
 
 		resizeChrome(delta);
+		pinTabsLeft(delta);
 		shiftBottomRow(delta);
 		setWidth(items, targetWidth);
 
@@ -371,6 +389,7 @@ public class BankResizerPlugin extends Plugin
 		}
 
 		resizeChrome(0);
+		pinTabsLeft(0);
 		shiftBottomRow(0);
 		setWidth(items, BankLayout.VANILLA_CONTAINER_WIDTH);
 
@@ -743,6 +762,41 @@ public class BankResizerPlugin extends Plugin
 	}
 
 	/**
+	 * Holds the tab strip against the left of the widened window.
+	 *
+	 * The strip is centre anchored, so it re-centres itself in the wider window
+	 * and leaves a growing gap between the first tab and the left edge of the
+	 * bank. Taking it out of the widening list was not enough on its own, because
+	 * the anchor, not the width, is what moves it.
+	 *
+	 * Pinning uses the position the strip rendered at before anything was touched,
+	 * so it lands exactly where the unmodified client drew it.
+	 */
+	private void pinTabsLeft(int delta)
+	{
+		Widget tabs = client.getWidget(InterfaceID.Bankmain.TABS);
+		if (tabs == null)
+		{
+			return;
+		}
+
+		WidgetSize size = savedSize(tabs);
+
+		if (delta == 0)
+		{
+			tabs.setXPositionMode(size.xPositionMode);
+			tabs.setOriginalX(size.originalX);
+		}
+		else
+		{
+			tabs.setXPositionMode(WidgetPositionMode.ABSOLUTE_LEFT);
+			tabs.setOriginalX(size.renderedX);
+		}
+
+		tabs.revalidate();
+	}
+
+	/**
 	 * Moves the right hand end of the bottom button row out with the window.
 	 *
 	 * Every one of the row's 18 buttons is pinned to the left edge at a fixed
@@ -904,11 +958,11 @@ public class BankResizerPlugin extends Plugin
 		for (BankGrid.Cell cell : plan.getCells())
 		{
 			Widget child = visible.get(cell.getIndex());
+			child.setOriginalY(cell.getY());
 
-			if (cell.isSeparator())
+			if (cell.isFurniture())
 			{
 				child.setOriginalX(BankLayout.START_X);
-				child.setOriginalY(BankLayout.itemY(cell.getRow()) + cell.getOffsetY());
 
 				// Stretch the rules across the wider grid, but leave the headings
 				// at their own width, which is the width of their text.
@@ -920,13 +974,12 @@ public class BankResizerPlugin extends Plugin
 			else
 			{
 				child.setOriginalX(BankLayout.itemX(cell.getColumn(), padding));
-				child.setOriginalY(BankLayout.itemY(cell.getRow()));
 			}
 
 			child.revalidate();
 		}
 
-		applyScroll(items, BankLayout.scrollHeightFor(plan.getRows()));
+		applyScroll(items, plan.getHeight() == 0 ? 0 : plan.getHeight() + BankLayout.SCROLL_PADDING);
 	}
 
 	/**

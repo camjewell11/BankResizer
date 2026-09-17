@@ -66,10 +66,10 @@ public class BankGridTest
 
 		BankGrid.Plan plan = BankGrid.plan(xs, ys, new boolean[10], 8);
 
-		assertEquals(0, cellFor(plan, 7).getRow());
-		assertEquals(1, cellFor(plan, 8).getRow());
+		assertEquals(0, cellFor(plan, 7).getY());
+		assertEquals(BankLayout.ROW_PITCH, cellFor(plan, 8).getY());
 		assertEquals(0, cellFor(plan, 8).getColumn());
-		assertEquals(2, plan.getRows());
+		assertEquals(2 * BankLayout.ROW_PITCH, plan.getHeight());
 	}
 
 	@Test
@@ -83,10 +83,10 @@ public class BankGridTest
 			new boolean[]{false, false, true},
 			8);
 
-		assertEquals(0, cellFor(plan, 0).getRow());
-		assertEquals(1, cellFor(plan, 2).getRow());
-		assertEquals(2, cellFor(plan, 1).getRow());
-		assertTrue(cellFor(plan, 2).isSeparator());
+		assertEquals(0, cellFor(plan, 0).getY());
+		assertTrue(cellFor(plan, 2).getY() > 0);
+		assertTrue(cellFor(plan, 1).getY() > cellFor(plan, 2).getY());
+		assertTrue(cellFor(plan, 2).isFurniture());
 	}
 
 	@Test
@@ -100,8 +100,8 @@ public class BankGridTest
 			new boolean[]{false, false, false, true},
 			8);
 
-		assertEquals(0, cellFor(plan, 2).getRow());
-		assertEquals(1, cellFor(plan, 3).getRow());
+		assertEquals(0, cellFor(plan, 2).getY());
+		assertTrue(cellFor(plan, 3).getY() >= BankLayout.ROW_PITCH);
 	}
 
 	@Test
@@ -113,9 +113,9 @@ public class BankGridTest
 			new boolean[]{false, true},
 			8);
 
-		assertEquals(0, cellFor(plan, 0).getRow());
-		assertEquals(1, cellFor(plan, 1).getRow());
-		assertEquals(2, plan.getRows());
+		assertEquals(0, cellFor(plan, 0).getY());
+		assertEquals(BankLayout.ROW_PITCH, cellFor(plan, 1).getY());
+		assertEquals(2 * BankLayout.ROW_PITCH, plan.getHeight());
 	}
 
 	@Test
@@ -145,49 +145,67 @@ public class BankGridTest
 			ys[i] = (i / 8) * 36;
 		}
 
-		assertTrue(BankGrid.plan(xs, ys, new boolean[20], 12).getRows()
-			< BankGrid.plan(xs, ys, new boolean[20], 8).getRows());
+		assertTrue(BankGrid.plan(xs, ys, new boolean[20], 12).getHeight()
+			< BankGrid.plan(xs, ys, new boolean[20], 8).getHeight());
 	}
 
 	@Test
-	public void ruleAndHeadingOfOneGroupShareARow()
+	public void reproducesTheGamesOwnGapAtAGroupBoundary()
 	{
-		// A live group boundary is a 2px rule with a heading just beneath it. Giving
-		// each its own row cost two rows per boundary and showed as a blank gap, so
-		// furniture within one row pitch shares a row and keeps its own offset.
+		// The live shape. One row of a group ends at y=756, the rule sits at 797
+		// and the next group starts at 804, so the boundary costs one row step plus
+		// 12px of slack, not a whole extra row.
+		BankGrid.Plan plan = BankGrid.plan(
+			new int[]{51, 51, 51},
+			new int[]{756, 804, 797},
+			new boolean[]{false, false, true},
+			8);
+
+		int firstRow = cellFor(plan, 0).getY();
+		int nextGroup = cellFor(plan, 1).getY();
+
+		assertEquals(0, firstRow);
+		assertEquals(BankLayout.ROW_PITCH + 12, nextGroup);
+		assertEquals(nextGroup - 7, cellFor(plan, 2).getY());
+	}
+
+	@Test
+	public void furnitureKeepsItsOffsetAboveTheGroupItIntroduces()
+	{
+		// A rule and a heading drawn at different heights above the same group keep
+		// their spacing relative to it rather than each being given a row.
 		BankGrid.Plan plan = BankGrid.plan(
 			new int[]{51, 51, 51, 51},
-			new int[]{0, 804, 797, 799},
+			new int[]{756, 804, 797, 799},
 			new boolean[]{false, false, true, true},
 			8);
 
-		assertEquals(0, cellFor(plan, 0).getRow());
-		assertEquals(1, cellFor(plan, 2).getRow());
-		assertEquals(1, cellFor(plan, 3).getRow());
-		assertEquals(0, cellFor(plan, 2).getOffsetY());
-		assertEquals(2, cellFor(plan, 3).getOffsetY());
-		assertEquals(2, cellFor(plan, 1).getRow());
+		int nextGroup = cellFor(plan, 1).getY();
+
+		assertEquals(nextGroup - 7, cellFor(plan, 2).getY());
+		assertEquals(nextGroup - 5, cellFor(plan, 3).getY());
 	}
 
 	@Test
-	public void furnitureFurtherApartThanARowDoesNotShareOne()
+	public void noBoundaryAddsNoSlack()
 	{
+		// Two plain rows a row pitch apart stay a row pitch apart.
 		BankGrid.Plan plan = BankGrid.plan(
-			new int[]{51, 51, 51},
-			new int[]{900, 0, 100},
-			new boolean[]{false, true, true},
-			8);
+			new int[]{51, 51},
+			new int[]{0, BankLayout.ROW_PITCH},
+			new boolean[]{false, false},
+			1);
 
-		assertEquals(0, cellFor(plan, 1).getRow());
-		assertEquals(1, cellFor(plan, 2).getRow());
+		assertEquals(0, cellFor(plan, 0).getY());
+		assertEquals(BankLayout.ROW_PITCH, cellFor(plan, 1).getY());
 	}
 
 	@Test
 	public void toleratesEmptyAndMismatchedInput()
 	{
-		assertEquals(0, BankGrid.plan(new int[0], new int[0], new boolean[0], 8).getRows());
-		assertEquals(0, BankGrid.plan(null, null, null, 8).getRows());
-		assertEquals(0, BankGrid.plan(new int[]{1}, new int[]{1, 2}, new boolean[]{false}, 8).getRows());
+		assertEquals(0, BankGrid.plan(new int[0], new int[0], new boolean[0], 8).getHeight());
+		assertEquals(0, BankGrid.plan(null, null, null, 8).getHeight());
+		assertEquals(0, BankGrid.plan(new int[]{1}, new int[]{1, 2}, new boolean[]{false}, 8).getHeight());
 	}
 
 	@Test
@@ -199,6 +217,6 @@ public class BankGridTest
 			new boolean[]{false, false},
 			0);
 
-		assertEquals(2, plan.getRows());
+		assertEquals(2 * BankLayout.ROW_PITCH, plan.getHeight());
 	}
 }

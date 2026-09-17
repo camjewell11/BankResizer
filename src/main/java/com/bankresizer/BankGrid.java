@@ -44,30 +44,27 @@ import java.util.List;
  */
 final class BankGrid
 {
-	/** Column assigned to a separator, which occupies a row of its own. */
-	static final int SEPARATOR_COLUMN = -1;
+	/** Column given to furniture, which owns the full width of its band. */
+	static final int FURNITURE_COLUMN = -1;
 
 	private BankGrid()
 	{
 	}
 
-	/** Where one child ends up. */
+	/** Where one child ends up, in pixels rather than rows. */
 	static final class Cell
 	{
 		private final int index;
 
-		private final int row;
+		private final int y;
 
 		private final int column;
 
-		private final int offsetY;
-
-		private Cell(int index, int row, int column, int offsetY)
+		private Cell(int index, int y, int column)
 		{
 			this.index = index;
-			this.row = row;
+			this.y = y;
 			this.column = column;
-			this.offsetY = offsetY;
 		}
 
 		int getIndex()
@@ -75,9 +72,9 @@ final class BankGrid
 			return index;
 		}
 
-		int getRow()
+		int getY()
 		{
-			return row;
+			return y;
 		}
 
 		int getColumn()
@@ -85,32 +82,23 @@ final class BankGrid
 			return column;
 		}
 
-		boolean isSeparator()
+		boolean isFurniture()
 		{
-			return column == SEPARATOR_COLUMN;
-		}
-
-		/**
-		 * Pixels below the top of its row this child sits, which keeps the rule
-		 * and the heading of one group in the arrangement the game drew them in.
-		 */
-		int getOffsetY()
-		{
-			return offsetY;
+			return column == FURNITURE_COLUMN;
 		}
 	}
 
-	/** A plan, and the number of rows it needs. */
+	/** A plan, and the height in pixels it occupies. */
 	static final class Plan
 	{
 		private final List<Cell> cells;
 
-		private final int rows;
+		private final int height;
 
-		private Plan(List<Cell> cells, int rows)
+		private Plan(List<Cell> cells, int height)
 		{
 			this.cells = cells;
-			this.rows = rows;
+			this.height = height;
 		}
 
 		List<Cell> getCells()
@@ -118,9 +106,9 @@ final class BankGrid
 			return cells;
 		}
 
-		int getRows()
+		int getHeight()
 		{
-			return rows;
+			return height;
 		}
 	}
 
@@ -128,15 +116,15 @@ final class BankGrid
 	 * Plans a grid {@code columns} wide from the positions the children already
 	 * hold.
 	 *
-	 * @param xs         current x of each child
-	 * @param ys         current y of each child
-	 * @param separators whether each child is a separator rather than an item
-	 * @param columns    items per row in the new grid
+	 * @param xs        current x of each child
+	 * @param ys        current y of each child
+	 * @param furniture whether each child spans its band rather than being an item
+	 * @param columns   items per row in the new grid
 	 */
-	static Plan plan(int[] xs, int[] ys, boolean[] separators, int columns)
+	static Plan plan(int[] xs, int[] ys, boolean[] furniture, int columns)
 	{
-		if (xs == null || ys == null || separators == null
-			|| xs.length != ys.length || xs.length != separators.length)
+		if (xs == null || ys == null || furniture == null
+			|| xs.length != ys.length || xs.length != furniture.length)
 		{
 			return new Plan(new ArrayList<>(), 0);
 		}
@@ -144,12 +132,12 @@ final class BankGrid
 		int width = Math.max(1, columns);
 
 		List<Integer> items = new ArrayList<>();
-		List<Integer> rules = new ArrayList<>();
+		List<Integer> extras = new ArrayList<>();
 		for (int i = 0; i < xs.length; i++)
 		{
-			if (separators[i])
+			if (furniture[i])
 			{
-				rules.add(i);
+				extras.add(i);
 			}
 			else
 			{
@@ -161,80 +149,89 @@ final class BankGrid
 		items.sort((a, b) -> ys[a] != ys[b]
 			? Integer.compare(ys[a], ys[b])
 			: Integer.compare(xs[a], xs[b]));
-		rules.sort((a, b) -> Integer.compare(ys[a], ys[b]));
+		extras.sort((a, b) -> ys[a] != ys[b]
+			? Integer.compare(ys[a], ys[b])
+			: Integer.compare(xs[a], xs[b]));
 
 		List<Cell> cells = new ArrayList<>(xs.length);
-		int row = 0;
+		List<Integer> pending = new ArrayList<>();
+		int y = 0;
 		int column = 0;
 		int next = 0;
-
-		// The row and the top y of the band being filled, so that a rule and the
-		// heading beneath it share one row instead of costing two.
-		int bandRow = -1;
-		int bandY = 0;
+		int lastRowY = Integer.MIN_VALUE;
 
 		for (int item : items)
 		{
-			while (next < rules.size() && ys[rules.get(next)] < ys[item])
+			while (next < extras.size() && ys[extras.get(next)] < ys[item])
 			{
-				int rule = rules.get(next++);
+				pending.add(extras.get(next++));
+			}
 
-				if (bandRow >= 0 && ys[rule] - bandY < BankLayout.ROW_PITCH)
-				{
-					cells.add(new Cell(rule, bandRow, SEPARATOR_COLUMN, ys[rule] - bandY));
-					continue;
-				}
-
+			if (!pending.isEmpty())
+			{
 				if (column > 0)
 				{
 					column = 0;
-					row++;
+					y += BankLayout.ROW_PITCH;
 				}
 
-				bandRow = row;
-				bandY = ys[rule];
-				cells.add(new Cell(rule, row, SEPARATOR_COLUMN, 0));
-				row++;
+				// Reproduce the gap the game left for this boundary rather than
+				// spending a whole row on it. A row step is already in y, so only
+				// the slack beyond one step is added.
+				int groupY = ys[item];
+				if (lastRowY != Integer.MIN_VALUE)
+				{
+					y += Math.max(0, groupY - lastRowY - BankLayout.ROW_PITCH);
+				}
+
+				int shift = 0;
+				for (int extra : pending)
+				{
+					shift = Math.max(shift, groupY - ys[extra] - y);
+				}
+
+				y += Math.max(0, shift);
+
+				for (int extra : pending)
+				{
+					cells.add(new Cell(extra, y - (groupY - ys[extra]), FURNITURE_COLUMN));
+				}
+
+				pending.clear();
 			}
 
-			cells.add(new Cell(item, row, column, 0));
-			bandRow = -1;
+			cells.add(new Cell(item, y, column));
+			lastRowY = ys[item];
 
 			if (++column >= width)
 			{
 				column = 0;
-				row++;
+				y += BankLayout.ROW_PITCH;
 			}
-		}
-
-		// Furniture below every item, which is where a trailing rule belongs.
-		while (next < rules.size())
-		{
-			int rule = rules.get(next++);
-
-			if (bandRow >= 0 && ys[rule] - bandY < BankLayout.ROW_PITCH)
-			{
-				cells.add(new Cell(rule, bandRow, SEPARATOR_COLUMN, ys[rule] - bandY));
-				continue;
-			}
-
-			if (column > 0)
-			{
-				column = 0;
-				row++;
-			}
-
-			bandRow = row;
-			bandY = ys[rule];
-			cells.add(new Cell(rule, row, SEPARATOR_COLUMN, 0));
-			row++;
 		}
 
 		if (column > 0)
 		{
-			row++;
+			column = 0;
+			y += BankLayout.ROW_PITCH;
 		}
 
-		return new Plan(cells, row);
+		// Furniture below every item, which is where a trailing rule belongs.
+		while (next < extras.size())
+		{
+			pending.add(extras.get(next++));
+		}
+
+		if (!pending.isEmpty())
+		{
+			for (int extra : pending)
+			{
+				cells.add(new Cell(extra, y, FURNITURE_COLUMN));
+			}
+
+			y += BankLayout.ROW_PITCH;
+		}
+
+		return new Plan(cells, y);
 	}
 }
