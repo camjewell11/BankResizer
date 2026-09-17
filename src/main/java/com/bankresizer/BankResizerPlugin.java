@@ -23,6 +23,7 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
+import net.runelite.api.Point;
 import net.runelite.api.ScriptID;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.ScriptPostFired;
@@ -244,25 +245,36 @@ public class BankResizerPlugin extends Plugin
 	}
 
 	/**
-	 * How wide the item container is allowed to become.
+	 * How wide the item container is allowed to become without any part of the
+	 * bank leaving the visible client.
 	 *
-	 * The bound is the client canvas, not any bank widget. Measuring the bank's
-	 * own root is circular: it is an interface layer whose width is not the width
-	 * of the visible bank window, which made this collapse to vanilla.
-	 *
-	 * Chrome is taken from the bank frame where that looks sane, and otherwise
-	 * falls back to a conservative constant, so a surprising widget tree costs a
-	 * column or two rather than pushing the bank off screen.
+	 * The bank window is centre anchored, so it grows equally in both directions
+	 * and its centre stays put. That makes the binding constraint the distance
+	 * from that centre to the nearer edge of the canvas, not the canvas width.
+	 * Measured on a live client the centre sits at x=362 on a 940 wide canvas, so
+	 * the window can reach 724 wide before its left edge passes zero, well short
+	 * of the 940 a plain canvas-width bound would have allowed.
 	 */
 	private int availableContainerWidth()
 	{
 		int canvasWidth = client.getCanvasWidth();
-		if (canvasWidth <= 0)
+		Widget root = client.getWidget(InterfaceID.Bankmain.UNIVERSE);
+		if (root == null || canvasWidth <= 0)
 		{
 			return BankLayout.VANILLA_CONTAINER_WIDTH;
 		}
 
-		return canvasWidth - measuredChrome() - 2 * EDGE_MARGIN;
+		Point location = root.getCanvasLocation();
+		if (location == null)
+		{
+			return BankLayout.VANILLA_CONTAINER_WIDTH;
+		}
+
+		// Stable as the window grows, precisely because it is centre anchored.
+		int centre = location.getX() + root.getWidth() / 2;
+		int maxWindow = BankLayout.maxWindowWidthFor(centre, canvasWidth, EDGE_MARGIN);
+
+		return maxWindow - measuredChrome();
 	}
 
 	/**

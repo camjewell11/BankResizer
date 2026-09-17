@@ -92,6 +92,25 @@ final class BankLayout
 	}
 
 	/**
+	 * Widest the bank window can be drawn without any part of it leaving the
+	 * canvas.
+	 *
+	 * The window is centre anchored, so it grows equally in both directions and
+	 * its centre does not move. The binding constraint is therefore the distance
+	 * from that centre to the nearer edge, doubled. A bank centred at 362 on a
+	 * 940 wide canvas can reach 724, not 940.
+	 *
+	 * @param centreX      horizontal centre of the bank window, in canvas pixels
+	 * @param canvasWidth  width of the game canvas
+	 * @param margin       pixels to keep clear at the nearer edge
+	 */
+	static int maxWindowWidthFor(int centreX, int canvasWidth, int margin)
+	{
+		int half = Math.min(centreX, canvasWidth - centreX) - margin;
+		return Math.max(0, 2 * half);
+	}
+
+	/**
 	 * Horizontal gap between item cells, derived from the container width the
 	 * same way the game script derives it. Guards the divide so a single-column
 	 * grid cannot throw.
