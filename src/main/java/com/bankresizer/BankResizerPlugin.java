@@ -1007,23 +1007,19 @@ public class BankResizerPlugin extends Plugin
 		int count = visible.size();
 		int[] xs = new int[count];
 		int[] ys = new int[count];
-		boolean[] separators = new boolean[count];
+		int[] widths = new int[count];
+		int[] heights = new int[count];
 
 		for (int i = 0; i < count; i++)
 		{
 			Widget child = visible.get(i);
 			xs[i] = child.getOriginalX();
 			ys[i] = child.getOriginalY();
-
-			// Width, not height, is what separates an item from the furniture.
-			// A live "view all items" tab holds 1081 cells at 36x32, nine 2px
-			// rules at 374 wide, and nine headings at 180, 228 and 324 wide by 32
-			// tall. The headings are exactly item height, so a height test slotted
-			// a 324px heading into a 36px item position.
-			separators[i] = child.getOriginalWidth() != BankLayout.ITEM_WIDTH;
+			widths[i] = savedSize(child).originalWidth;
+			heights[i] = child.getOriginalHeight();
 		}
 
-		BankGrid.Plan plan = BankGrid.plan(xs, ys, separators, columns);
+		BankGrid.Plan plan = BankGrid.plan(xs, ys, widths, heights, columns);
 		int padding = BankLayout.paddingFor(containerWidth, columns);
 
 		// The game's own separator width, 374 at the stock container width.
@@ -1034,20 +1030,25 @@ public class BankResizerPlugin extends Plugin
 			Widget child = visible.get(cell.getIndex());
 			child.setOriginalY(cell.getY());
 
-			if (cell.isFurniture())
+			switch (cell.getKind())
 			{
-				child.setOriginalX(BankLayout.START_X);
-
-				// Stretch the rules across the wider grid, but leave the headings
-				// at their own width, which is the width of their text.
-				if (child.getOriginalHeight() < ITEM_CELL_HEIGHT)
-				{
+				case RULE:
+					child.setOriginalX(BankLayout.START_X);
 					child.setOriginalWidth(ruleWidth);
-				}
-			}
-			else
-			{
-				child.setOriginalX(BankLayout.itemX(cell.getColumn(), padding));
+					break;
+
+				case FILLER:
+					// Covers whatever cells are spare at the end of the row. A row
+					// that comes out full leaves none, so the block collapses.
+					child.setOriginalX(BankLayout.itemX(cell.getColumn(), padding));
+					child.setOriginalWidth(cell.getSpan() == 0
+						? 0
+						: cell.getSpan() * (BankLayout.ITEM_WIDTH + padding) - padding);
+					break;
+
+				default:
+					child.setOriginalX(BankLayout.itemX(cell.getColumn(), padding));
+					break;
 			}
 
 			child.revalidate();

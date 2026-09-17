@@ -12,6 +12,21 @@ import org.junit.Test;
  */
 public class BankGridTest
 {
+
+	private static int[] widthsOf(int n)
+	{
+		int[] widths = new int[n];
+		java.util.Arrays.fill(widths, BankLayout.ITEM_WIDTH);
+		return widths;
+	}
+
+	private static int[] heightsOf(int n)
+	{
+		int[] heights = new int[n];
+		java.util.Arrays.fill(heights, BankLayout.ITEM_HEIGHT);
+		return heights;
+	}
+
 	private static BankGrid.Cell cellFor(BankGrid.Plan plan, int index)
 	{
 		for (BankGrid.Cell cell : plan.getCells())
@@ -32,7 +47,8 @@ public class BankGridTest
 		BankGrid.Plan plan = BankGrid.plan(
 			new int[]{51, 51},
 			new int[]{804, 0},
-			new boolean[]{false, false},
+			new int[]{36, 36},
+			new int[]{32, 32},
 			8);
 
 		// Both fit on row 0 at eight columns, so the order shows in the column:
@@ -47,7 +63,8 @@ public class BankGridTest
 		BankGrid.Plan plan = BankGrid.plan(
 			new int[]{99, 51},
 			new int[]{0, 0},
-			new boolean[]{false, false},
+			new int[]{36, 36},
+			new int[]{32, 32},
 			8);
 
 		assertEquals(0, cellFor(plan, 1).getColumn());
@@ -64,7 +81,7 @@ public class BankGridTest
 			xs[i] = i * 48;
 		}
 
-		BankGrid.Plan plan = BankGrid.plan(xs, ys, new boolean[10], 8);
+		BankGrid.Plan plan = BankGrid.plan(xs, ys, widthsOf(10), heightsOf(10), 8);
 
 		assertEquals(0, cellFor(plan, 7).getY());
 		assertEquals(BankLayout.ROW_PITCH, cellFor(plan, 8).getY());
@@ -80,13 +97,14 @@ public class BankGridTest
 		BankGrid.Plan plan = BankGrid.plan(
 			new int[]{51, 51, 51},
 			new int[]{0, 804, 797},
-			new boolean[]{false, false, true},
+			new int[]{36, 36, 374},
+			new int[]{32, 32, 2},
 			8);
 
 		assertEquals(0, cellFor(plan, 0).getY());
 		assertTrue(cellFor(plan, 2).getY() > 0);
 		assertTrue(cellFor(plan, 1).getY() > cellFor(plan, 2).getY());
-		assertTrue(cellFor(plan, 2).isFurniture());
+		assertTrue(cellFor(plan, 2).getKind() == BankGrid.Kind.RULE);
 	}
 
 	@Test
@@ -97,7 +115,8 @@ public class BankGridTest
 		BankGrid.Plan plan = BankGrid.plan(
 			new int[]{51, 99, 147, 51},
 			new int[]{0, 0, 0, 10},
-			new boolean[]{false, false, false, true},
+			new int[]{36, 36, 36, 374},
+			new int[]{32, 32, 32, 2},
 			8);
 
 		assertEquals(0, cellFor(plan, 2).getY());
@@ -110,7 +129,8 @@ public class BankGridTest
 		BankGrid.Plan plan = BankGrid.plan(
 			new int[]{51, 51},
 			new int[]{0, 900},
-			new boolean[]{false, true},
+			new int[]{36, 374},
+			new int[]{32, 2},
 			8);
 
 		assertEquals(0, cellFor(plan, 0).getY());
@@ -123,14 +143,15 @@ public class BankGridTest
 	{
 		int[] xs = {51, 99, 147, 51, 51};
 		int[] ys = {0, 0, 0, 100, 50};
-		boolean[] seps = {false, false, false, false, true};
+		int[] ws = {36, 36, 36, 36, 374};
+		int[] hs = {32, 32, 32, 32, 2};
 
-		List<BankGrid.Cell> cells = BankGrid.plan(xs, ys, seps, 8).getCells();
+		List<BankGrid.Cell> cells = BankGrid.plan(xs, ys, ws, hs, 8).getCells();
 
 		assertEquals(5, cells.size());
 		for (int i = 0; i < 5; i++)
 		{
-			cellFor(BankGrid.plan(xs, ys, seps, 8), i);
+			cellFor(BankGrid.plan(xs, ys, ws, hs, 8), i);
 		}
 	}
 
@@ -145,8 +166,8 @@ public class BankGridTest
 			ys[i] = (i / 8) * 36;
 		}
 
-		assertTrue(BankGrid.plan(xs, ys, new boolean[20], 12).getHeight()
-			< BankGrid.plan(xs, ys, new boolean[20], 8).getHeight());
+		assertTrue(BankGrid.plan(xs, ys, widthsOf(20), heightsOf(20), 12).getHeight()
+			< BankGrid.plan(xs, ys, widthsOf(20), heightsOf(20), 8).getHeight());
 	}
 
 	@Test
@@ -158,7 +179,8 @@ public class BankGridTest
 		BankGrid.Plan plan = BankGrid.plan(
 			new int[]{51, 51, 51},
 			new int[]{756, 804, 797},
-			new boolean[]{false, false, true},
+			new int[]{36, 36, 374},
+			new int[]{32, 32, 2},
 			8);
 
 		int firstRow = cellFor(plan, 0).getY();
@@ -177,7 +199,8 @@ public class BankGridTest
 		BankGrid.Plan plan = BankGrid.plan(
 			new int[]{51, 51, 51, 51},
 			new int[]{756, 804, 797, 799},
-			new boolean[]{false, false, true, true},
+			new int[]{36, 36, 374, 374},
+			new int[]{32, 32, 2, 2},
 			8);
 
 		int nextGroup = cellFor(plan, 1).getY();
@@ -193,7 +216,8 @@ public class BankGridTest
 		BankGrid.Plan plan = BankGrid.plan(
 			new int[]{51, 51},
 			new int[]{0, BankLayout.ROW_PITCH},
-			new boolean[]{false, false},
+			new int[]{36, 36},
+			new int[]{32, 32},
 			1);
 
 		assertEquals(0, cellFor(plan, 0).getY());
@@ -201,11 +225,56 @@ public class BankGridTest
 	}
 
 	@Test
+	public void fillerCoversTheCellsSpareAtTheEndOfItsRow()
+	{
+		// Three items then a filler, at eight columns: it covers the five cells
+		// left over, starting at column three, not a row of its own at the left.
+		BankGrid.Plan plan = BankGrid.plan(
+			new int[]{51, 99, 147, 195},
+			new int[]{0, 0, 0, 4},
+			new int[]{36, 36, 36, 228},
+			new int[]{32, 32, 32, 32},
+			8);
+
+		BankGrid.Cell filler = cellFor(plan, 3);
+
+		assertEquals(BankGrid.Kind.FILLER, filler.getKind());
+		assertEquals(3, filler.getColumn());
+		assertEquals(5, filler.getSpan());
+		assertEquals(0, filler.getY());
+	}
+
+	@Test
+	public void fillerCollapsesWhenTheRowCameOutFull()
+	{
+		// At three columns those same three items fill the row exactly, so there
+		// is nothing left to cover and the block has to disappear.
+		BankGrid.Plan plan = BankGrid.plan(
+			new int[]{51, 99, 147, 195},
+			new int[]{0, 0, 0, 4},
+			new int[]{36, 36, 36, 228},
+			new int[]{32, 32, 32, 32},
+			3);
+
+		assertEquals(0, cellFor(plan, 3).getSpan());
+	}
+
+	@Test
+	public void widthTellsAnItemFromAFiller()
+	{
+		assertEquals(BankGrid.Kind.ITEM, BankGrid.kindOf(36, 32));
+		assertEquals(BankGrid.Kind.FILLER, BankGrid.kindOf(84, 32));
+		assertEquals(BankGrid.Kind.FILLER, BankGrid.kindOf(324, 32));
+		assertEquals(BankGrid.Kind.RULE, BankGrid.kindOf(374, 2));
+	}
+
+	@Test
 	public void toleratesEmptyAndMismatchedInput()
 	{
-		assertEquals(0, BankGrid.plan(new int[0], new int[0], new boolean[0], 8).getHeight());
-		assertEquals(0, BankGrid.plan(null, null, null, 8).getHeight());
-		assertEquals(0, BankGrid.plan(new int[]{1}, new int[]{1, 2}, new boolean[]{false}, 8).getHeight());
+		assertEquals(0, BankGrid.plan(new int[0], new int[0], new int[0], new int[0], 8).getHeight());
+		assertEquals(0, BankGrid.plan(null, null, null, null, 8).getHeight());
+		assertEquals(0, BankGrid.plan(new int[]{1}, new int[]{1, 2}, new int[]{36},
+			new int[]{32}, 8).getHeight());
 	}
 
 	@Test
@@ -214,7 +283,8 @@ public class BankGridTest
 		BankGrid.Plan plan = BankGrid.plan(
 			new int[]{51, 99},
 			new int[]{0, 0},
-			new boolean[]{false, false},
+			new int[]{36, 36},
+			new int[]{32, 32},
 			0);
 
 		assertEquals(2 * BankLayout.ROW_PITCH, plan.getHeight());

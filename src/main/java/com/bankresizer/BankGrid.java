@@ -17,6 +17,7 @@
 package com.bankresizer;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 
 /**
@@ -44,32 +45,58 @@ import java.util.List;
  */
 final class BankGrid
 {
-	/** Column given to furniture, which owns the full width of its band. */
-	static final int FURNITURE_COLUMN = -1;
+	/** What a child in the item container is. */
+	enum Kind
+	{
+		/** An ordinary item cell. */
+		ITEM,
+		/** A thin rule dividing two groups, spanning the grid. */
+		RULE,
+		/**
+		 * A block covering the unused cells at the end of a group's last row.
+		 *
+		 * Measured live, these are item height, carry no item, and are exactly
+		 * {@code n * 48 - 12} wide for the n cells they cover: 84 for two, 180 for
+		 * four, 324 for seven. How many cells are spare depends on the column
+		 * count, so a filler cannot be moved, only worked out again.
+		 */
+		FILLER
+	}
 
 	private BankGrid()
 	{
 	}
 
-	/** Where one child ends up, in pixels rather than rows. */
+	/** Where one child ends up. */
 	static final class Cell
 	{
 		private final int index;
+
+		private final Kind kind;
 
 		private final int y;
 
 		private final int column;
 
-		private Cell(int index, int y, int column)
+		private final int span;
+
+		private Cell(int index, Kind kind, int y, int column, int span)
 		{
 			this.index = index;
+			this.kind = kind;
 			this.y = y;
 			this.column = column;
+			this.span = span;
 		}
 
 		int getIndex()
 		{
 			return index;
+		}
+
+		Kind getKind()
+		{
+			return kind;
 		}
 
 		int getY()
@@ -82,9 +109,10 @@ final class BankGrid
 			return column;
 		}
 
-		boolean isFurniture()
+		/** Cells covered, for a filler. Zero when the row came out full. */
+		int getSpan()
 		{
-			return column == FURNITURE_COLUMN;
+			return span;
 		}
 	}
 
@@ -112,19 +140,26 @@ final class BankGrid
 		}
 	}
 
-	/**
-	 * Plans a grid {@code columns} wide from the positions the children already
-	 * hold.
-	 *
-	 * @param xs        current x of each child
-	 * @param ys        current y of each child
-	 * @param furniture whether each child spans its band rather than being an item
-	 * @param columns   items per row in the new grid
-	 */
-	static Plan plan(int[] xs, int[] ys, boolean[] furniture, int columns)
+	/** What a child of the given size is. */
+	static Kind kindOf(int width, int height)
 	{
-		if (xs == null || ys == null || furniture == null
-			|| xs.length != ys.length || xs.length != furniture.length)
+		if (height < BankLayout.ITEM_HEIGHT)
+		{
+			return Kind.RULE;
+		}
+
+		return width == BankLayout.ITEM_WIDTH ? Kind.ITEM : Kind.FILLER;
+	}
+
+	/**
+	 * Plans a grid {@code columns} wide from the positions and sizes the children
+	 * already hold.
+	 */
+	static Plan plan(int[] xs, int[] ys, int[] widths, int[] heights, int columns)
+	{
+		if (xs == null || ys == null || widths == null || heights == null
+			|| xs.length != ys.length || xs.length != widths.length
+			|| xs.length != heights.length)
 		{
 			return new Plan(new ArrayList<>(), 0);
 		}
@@ -135,13 +170,13 @@ final class BankGrid
 		List<Integer> extras = new ArrayList<>();
 		for (int i = 0; i < xs.length; i++)
 		{
-			if (furniture[i])
+			if (kindOf(widths[i], heights[i]) == Kind.ITEM)
 			{
-				extras.add(i);
+				items.add(i);
 			}
 			else
 			{
-				items.add(i);
+				extras.add(i);
 			}
 		}
 
@@ -169,6 +204,9 @@ final class BankGrid
 
 			if (!pending.isEmpty())
 			{
+				column = flush(cells, pending, xs, ys, widths, heights, y, column, width,
+					lastRowY != Integer.MIN_VALUE);
+
 				if (column > 0)
 				{
 					column = 0;
@@ -194,13 +232,13 @@ final class BankGrid
 
 				for (int extra : pending)
 				{
-					cells.add(new Cell(extra, y - (groupY - ys[extra]), FURNITURE_COLUMN));
+					cells.add(new Cell(extra, Kind.RULE, y - (groupY - ys[extra]), -1, 0));
 				}
 
 				pending.clear();
 			}
 
-			cells.add(new Cell(item, y, column));
+			cells.add(new Cell(item, Kind.ITEM, y, column, 1));
 			lastRowY = ys[item];
 
 			if (++column >= width)
@@ -210,13 +248,6 @@ final class BankGrid
 			}
 		}
 
-		if (column > 0)
-		{
-			column = 0;
-			y += BankLayout.ROW_PITCH;
-		}
-
-		// Furniture below every item, which is where a trailing rule belongs.
 		while (next < extras.size())
 		{
 			pending.add(extras.get(next++));
@@ -224,14 +255,60 @@ final class BankGrid
 
 		if (!pending.isEmpty())
 		{
-			for (int extra : pending)
+			column = flush(cells, pending, xs, ys, widths, heights, y, column, width,
+				lastRowY != Integer.MIN_VALUE);
+
+			if (column > 0)
 			{
-				cells.add(new Cell(extra, y, FURNITURE_COLUMN));
+				column = 0;
+				y += BankLayout.ROW_PITCH;
 			}
 
+			for (int extra : pending)
+			{
+				cells.add(new Cell(extra, Kind.RULE, y, -1, 0));
+			}
+
+			if (!pending.isEmpty())
+			{
+				y += BankLayout.ROW_PITCH;
+			}
+
+			pending.clear();
+		}
+		else if (column > 0)
+		{
 			y += BankLayout.ROW_PITCH;
 		}
 
 		return new Plan(cells, y);
+	}
+
+	/**
+	 * Places any fillers waiting in {@code pending} across the spare cells of the
+	 * row in progress, and drops them from the list so only rules are left.
+	 */
+	private static int flush(List<Cell> cells, List<Integer> pending, int[] xs, int[] ys,
+		int[] widths, int[] heights, int y, int column, int width, boolean anyPlaced)
+	{
+		// A row that came out exactly full has already wrapped the column back to
+		// zero, which otherwise looks the same as the start of a fresh row. Once
+		// any item has been placed, a zero column means the row before it was
+		// full, so there is nothing spare and the block collapses.
+		int spare = column == 0 && anyPlaced ? 0 : Math.max(0, width - column);
+
+		for (Iterator<Integer> it = pending.iterator(); it.hasNext(); )
+		{
+			int extra = it.next();
+			if (kindOf(widths[extra], heights[extra]) != Kind.FILLER)
+			{
+				continue;
+			}
+
+			cells.add(new Cell(extra, Kind.FILLER, y, column, spare));
+			it.remove();
+		}
+
+		return column;
 	}
 }
