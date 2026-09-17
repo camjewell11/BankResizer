@@ -39,6 +39,7 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.plugins.banktags.BankTagsService;
 
 @Slf4j
 @PluginDescriptor(
@@ -50,11 +51,19 @@ import net.runelite.client.plugins.PluginDescriptor;
 public class BankResizerPlugin extends Plugin
 {
 	/**
-	 * Dynamic children of the item container below this index are bank slots.
-	 * At and above it they are tab separators. The number comes from
-	 * [proc,bankmain_build], which starts its separator sweep at slot 816.
+	 * Height of a bank item cell. A dynamic child of the item container that is
+	 * this tall is an item; anything else is a tab separator.
+	 *
+	 * This replaced a fixed child index of 816, taken from the slot at which
+	 * [proc,bankmain_build] begins its separator sweep. That index is the bank's
+	 * capacity, which Jagex has raised since, so on a large bank real items were
+	 * being mistaken for separators and given a row to themselves. The symptom was
+	 * the "view all items" tab appearing to lose its first group.
+	 *
+	 * The height test is what the client's own bank tags code uses to tell the two
+	 * apart, see LayoutManager in net.runelite.client.plugins.banktags.tabs.
 	 */
-	private static final int SEPARATOR_INDEX_BASE = 816;
+	private static final int ITEM_CELL_HEIGHT = BankLayout.ITEM_HEIGHT;
 
 	/** Pixels kept clear between the widened bank and the edge of the viewport. */
 	private static final int EDGE_MARGIN = 4;
@@ -82,11 +91,13 @@ public class BankResizerPlugin extends Plugin
 	 * The bank window and its fixed-width ancestors are not listed here. They are
 	 * found by walking the widget tree, see {@link BankRoom}.
 	 *
-	 * TABS re-centres its own icons from its width, so widening it is enough to
-	 * reflow the tabs.
+	 * TABS is deliberately absent. It centres its own icons within its width, so
+	 * widening it spread the tab strip across the wider window and opened a gap
+	 * between the first tab and the left edge of the bank. Left at its vanilla
+	 * width the strip keeps vanilla spacing and stays aligned with the item grid,
+	 * which is where the eye expects it.
 	 */
 	private static final int[] WIDTH_TRACKING = {
-		InterfaceID.Bankmain.TABS,
 		// The title bar is 476 wide in absolute mode, so it would sit short of the
 		// right edge of a widened window.
 		InterfaceID.Bankmain.TITLE,
@@ -100,6 +111,17 @@ public class BankResizerPlugin extends Plugin
 
 	@Inject
 	private BankResizerConfig config;
+
+	/**
+	 * The bank tags plugin, when it is loaded, used only to ask whether a layout
+	 * currently owns the item positions.
+	 *
+	 * Optional because a client without the bank tags plugin has no binding for
+	 * it, and a missing binding would stop this plugin loading at all. Everything
+	 * that reads it treats null as "no layout active".
+	 */
+	@com.google.inject.Inject(optional = true)
+	private BankTagsService bankTagsService;
 
 	/**
 	 * Untouched width of every widget this plugin has widened, keyed by component
@@ -291,7 +313,15 @@ public class BankResizerPlugin extends Plugin
 		resizeChrome(delta);
 		shiftBottomRow(delta);
 		setWidth(items, targetWidth);
-		layoutItems(items, columns, targetWidth);
+
+		if (itemsOwnedByAnotherPlugin())
+		{
+			log.debug("Another plugin owns the item positions; widening the frame only");
+		}
+		else
+		{
+			layoutItems(items, columns, targetWidth);
+		}
 
 		if (dump)
 		{
@@ -336,7 +366,28 @@ public class BankResizerPlugin extends Plugin
 		resizeChrome(0);
 		shiftBottomRow(0);
 		setWidth(items, BankLayout.VANILLA_CONTAINER_WIDTH);
-		layoutItems(items, BankLayout.VANILLA_COLUMNS, BankLayout.VANILLA_CONTAINER_WIDTH);
+
+		if (!itemsOwnedByAnotherPlugin())
+		{
+			layoutItems(items, BankLayout.VANILLA_COLUMNS, BankLayout.VANILLA_CONTAINER_WIDTH);
+		}
+	}
+
+	/**
+	 * Whether something other than the game script is deciding where the items go.
+	 *
+	 * A bank tag layout stores an item per position in a flat array and draws it
+	 * at a position derived from its index with a hardcoded eight per row, in
+	 * LayoutManager. Relaying those items out underneath it produces a grid that
+	 * disagrees with the layout the user arranged, so when a layout is active the
+	 * items are left exactly where it put them and only the frame is widened.
+	 *
+	 * Plugins that present their own view of the bank through a bank tag, rather
+	 * than by positioning widgets themselves, are covered by the same check.
+	 */
+	private boolean itemsOwnedByAnotherPlugin()
+	{
+		return bankTagsService != null && bankTagsService.getActiveLayout() != null;
 	}
 
 	/**
@@ -714,15 +765,14 @@ public class BankResizerPlugin extends Plugin
 		int row = 0;
 		boolean sawSeparator = false;
 
-		for (int i = 0; i < children.length; i++)
+		for (Widget child : children)
 		{
-			Widget child = children[i];
 			if (child == null || child.isSelfHidden())
 			{
 				continue;
 			}
 
-			if (i >= SEPARATOR_INDEX_BASE)
+			if (child.getOriginalHeight() != ITEM_CELL_HEIGHT)
 			{
 				// Tab separators span a whole row. Close the current row first.
 				sawSeparator = true;
