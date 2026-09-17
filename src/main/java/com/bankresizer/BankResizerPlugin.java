@@ -103,7 +103,31 @@ public class BankResizerPlugin extends Plugin
 	 * so that repeated layout passes are idempotent. Cleared whenever the bank
 	 * interface unloads, because the widget tree is rebuilt from scratch.
 	 */
-	private final Map<Integer, Integer> originalWidths = new HashMap<>();
+	private final Map<Integer, WidgetSize> originalWidths = new HashMap<>();
+
+	/**
+	 * A widget's width as it was before this plugin touched it.
+	 *
+	 * Records the rendered width as well as the stored one because they differ for
+	 * anything not sized in absolute mode, where the stored value is an inset. The
+	 * rendered width is what a delta has to be added to; the stored width and mode
+	 * are what has to go back on restore.
+	 */
+	private static final class WidgetSize
+	{
+		private final int originalWidth;
+
+		private final int widthMode;
+
+		private final int renderedWidth;
+
+		private WidgetSize(Widget widget)
+		{
+			this.originalWidth = widget.getOriginalWidth();
+			this.widthMode = widget.getWidthMode();
+			this.renderedWidth = widget.getWidth();
+		}
+	}
 
 	/**
 	 * Whether this plugin currently has the bank in a non-vanilla layout. Lets the
@@ -448,13 +472,23 @@ public class BankResizerPlugin extends Plugin
 		for (int i = chain.size() - 1; i >= 0; i--)
 		{
 			Widget node = chain.get(i);
-			if (node.getWidthMode() == WidgetSizeMode.ABSOLUTE)
+			WidgetSize size = savedSize(node);
+
+			if (delta == 0)
 			{
-				node.setOriginalWidth(originalWidthOf(node) + delta);
+				node.setWidthMode(size.widthMode);
+				node.setOriginalWidth(size.originalWidth);
+			}
+			else
+			{
+				// Set the width outright rather than letting the client derive it.
+				// The interface root is handed its size when the interface opens
+				// into its slot; its stored inset is 0, so revalidate() resolves it
+				// against the screen instead and stretches it to the full canvas.
+				node.setWidthMode(WidgetSizeMode.ABSOLUTE);
+				node.setOriginalWidth(size.renderedWidth + delta);
 			}
 
-			// Tracking ancestors keep their inset but still have to recompute
-			// against the parent we just resized.
 			node.revalidate();
 		}
 
@@ -600,10 +634,20 @@ public class BankResizerPlugin extends Plugin
 		appliedCanvasWidth = -1;
 	}
 
-	/** Width the widget had before this plugin first touched it. */
+	/** Size the widget had before this plugin first touched it, captured once. */
+	private WidgetSize savedSize(Widget widget)
+	{
+		return originalWidths.computeIfAbsent(widget.getId(), id -> new WidgetSize(widget));
+	}
+
+	/**
+	 * Rendered width the widget had before this plugin first touched it. This is
+	 * the figure a delta is added to, not the stored width, which is an inset for
+	 * anything not sized in absolute mode.
+	 */
 	private int originalWidthOf(Widget widget)
 	{
-		return originalWidths.computeIfAbsent(widget.getId(), id -> widget.getOriginalWidth());
+		return savedSize(widget).renderedWidth;
 	}
 
 	private void setWidth(Widget widget, int width)

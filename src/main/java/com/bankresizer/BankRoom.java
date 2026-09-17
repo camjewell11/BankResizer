@@ -140,7 +140,9 @@ final class BankRoom
 			limit = window.getWidth();
 		}
 
-		return new BankRoom(slots, chain.subList(0, end), limit);
+		// Stop at the topmost slot. Anything above it is a tracking ancestor that
+		// must keep its own size: that one is the limit, not something to widen.
+		return new BankRoom(slots, chain.subList(0, highestSlot + 1), limit);
 	}
 
 	/** Guards against a malformed tree sending the walk into a long loop. */
