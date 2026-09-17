@@ -985,6 +985,14 @@ public class BankResizerPlugin extends Plugin
 
 		bases.sort(Integer::compare);
 
+		// The pitch the script laid the columns out on, which is what every offset
+		// inside a column was measured against.
+		int pitch = bases.get(1) - bases.get(0);
+		if (pitch <= 0)
+		{
+			return;
+		}
+
 		for (Widget child : children)
 		{
 			if (child == null || child.isSelfHidden())
@@ -1010,7 +1018,17 @@ public class BankResizerPlugin extends Plugin
 				}
 			}
 
-			int moved = column * entryWidth + (child.getOriginalX() - bases.get(column));
+			int offset = child.getOriginalX() - bases.get(column);
+
+			// Anything sitting in the right half of an entry is right aligned there,
+			// the favourite heart above all, so it keeps its distance from the right
+			// edge. Measuring it from the left instead left it stranded mid entry
+			// once the entry grew. Where the pitch already matches the width this
+			// works out to the same number, so applying it twice changes nothing.
+			int moved = offset > pitch / 2
+				? column * entryWidth + entryWidth - (pitch - offset)
+				: column * entryWidth + offset;
+
 			if (moved != child.getOriginalX())
 			{
 				child.setOriginalX(moved);
