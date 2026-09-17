@@ -1114,22 +1114,14 @@ public class BankResizerPlugin extends Plugin
 			return;
 		}
 
-		int furthest = furthestOffsetInAnEntry(children, entries);
-
-		// The favourite heart sits furthest right in an entry and the game holds it
-		// against that edge, so it keeps its distance from the right rather than
-		// the left. Captured once, because a later pass may find it already moved.
-		if (potionHeartInset < 0 && furthest > 0 && furthest < entryWidth)
-		{
-			potionHeartInset = entryWidth - furthest;
-		}
-
 		// Reading order within a row, so the leftmost entry of each row is its
 		// first column however the entries are currently placed.
 		List<int[]> byRow = new ArrayList<>(entries);
 		byRow.sort((a, b) -> a[3] != b[3]
 			? Integer.compare(a[3], b[3])
 			: a[2] != b[2] ? Integer.compare(a[2], b[2]) : Integer.compare(a[0], b[0]));
+
+		captureHeartInset(children, byRow, entryWidth);
 
 		int column = 0;
 		int row = Integer.MIN_VALUE;
@@ -1140,6 +1132,8 @@ public class BankResizerPlugin extends Plugin
 			row = entry[3];
 
 			int base = column * entryWidth;
+			int rightmost = furthestOffsetIn(children, entry);
+
 			for (int i = entry[0]; i < entry[1]; i++)
 			{
 				Widget child = children[i];
@@ -1150,7 +1144,10 @@ public class BankResizerPlugin extends Plugin
 				}
 
 				int offset = child.getOriginalX() - entry[2];
-				int moved = potionHeartInset >= 0 && offset >= furthest
+
+				// The rightmost part of an entry is its favourite heart, which the
+				// game holds against the entry's right edge.
+				int moved = potionHeartInset >= 0 && offset == rightmost && rightmost > 0
 					? base + entryWidth - potionHeartInset
 					: base + offset;
 
@@ -1163,27 +1160,67 @@ public class BankResizerPlugin extends Plugin
 		}
 	}
 
-	/** How far right of its entry's start the furthest part of any entry sits. */
-	private int furthestOffsetInAnEntry(Widget[] children, List<int[]> entries)
+	/** How far right of its own start the furthest part of one entry sits. */
+	private int furthestOffsetIn(Widget[] children, int[] entry)
 	{
 		int furthest = 0;
 
-		for (int[] entry : entries)
+		for (int i = entry[0]; i < entry[1]; i++)
 		{
-			for (int i = entry[0]; i < entry[1]; i++)
+			Widget child = children[i];
+			if (child == null || child.isSelfHidden()
+				|| child.getOriginalHeight() > BankLayout.ROW_PITCH)
 			{
-				Widget child = children[i];
-				if (child == null || child.isSelfHidden()
-					|| child.getOriginalHeight() > BankLayout.ROW_PITCH)
-				{
-					continue;
-				}
-
-				furthest = Math.max(furthest, child.getOriginalX() - entry[2]);
+				continue;
 			}
+
+			furthest = Math.max(furthest, child.getOriginalX() - entry[2]);
 		}
 
 		return furthest;
+	}
+
+	/**
+	 * Works out how far the favourite heart sits from the right of its entry.
+	 *
+	 * Measured against the pitch the game laid the columns out on, not against the
+	 * width the entries currently have. Measuring against the current width was a
+	 * race: on a pass where the entries had already been widened it produced an
+	 * inset that put the heart back exactly where it started, so the alignment
+	 * quietly did nothing. Which pass ran first depended on what else was driving
+	 * the store, so it worked alone and failed beside a plugin that reorders it.
+	 *
+	 * Only a row still in the game's own state can answer this, which is a row
+	 * whose two entries are a pitch apart that is not their width.
+	 */
+	private void captureHeartInset(Widget[] children, List<int[]> byRow, int entryWidth)
+	{
+		for (int i = 0; i + 1 < byRow.size(); i++)
+		{
+			int[] left = byRow.get(i);
+			int[] right = byRow.get(i + 1);
+
+			if (left[3] != right[3])
+			{
+				continue;
+			}
+
+			int pitch = right[2] - left[2];
+			if (pitch <= 0 || pitch == entryWidth)
+			{
+				continue;
+			}
+
+			int furthest = Math.max(furthestOffsetIn(children, left),
+				furthestOffsetIn(children, right));
+
+			if (furthest > 0 && furthest < pitch)
+			{
+				potionHeartInset = pitch - furthest;
+			}
+
+			return;
+		}
 	}
 
 	/**
