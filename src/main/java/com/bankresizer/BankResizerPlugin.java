@@ -939,12 +939,21 @@ public class BankResizerPlugin extends Plugin
 			}
 
 			visible++;
-			sizes.merge(child.getOriginalWidth() + "x" + child.getOriginalHeight(), 1, Integer::sum);
 
-			if (child.getOriginalHeight() < ITEM_CELL_HEIGHT)
+			// Rules are keyed by height alone. This plugin stretches them, so
+			// keying them by width made the shape flip between the game's value
+			// and ours on alternate passes and dumped the view twice over.
+			sizes.merge(child.getOriginalHeight() < ITEM_CELL_HEIGHT
+				? "rule h" + child.getOriginalHeight()
+				: child.getOriginalWidth() + "x" + child.getOriginalHeight(), 1, Integer::sum);
+
+			if (child.getOriginalWidth() != BankLayout.ITEM_WIDTH)
 			{
-				shorts.append(String.format(" [%d h=%d w=%d x=%d y=%d type=%d text=%s]",
-					i, child.getOriginalHeight(), child.getOriginalWidth(),
+				// Everything that is not an ordinary cell, with its item id, which
+				// is what tells a double width item from a heading. Guessing that
+				// from the width alone is what put a wide cell on a row of its own.
+				shorts.append(String.format(" [%d %dx%d item=%d x=%d y=%d type=%d text=%s]",
+					i, child.getOriginalWidth(), child.getOriginalHeight(), child.getItemId(),
 					child.getOriginalX(), child.getOriginalY(), child.getType(), child.getText()));
 			}
 			else if (visible <= 6)
@@ -965,7 +974,7 @@ public class BankResizerPlugin extends Plugin
 
 		log.debug("item container: {} children, {} visible, {} hidden", children.length, visible, hidden);
 		log.debug("  first visible:{}", first.length() == 0 ? " none" : first.toString());
-		log.debug("  shorter than an item cell:{}", shorts.length() == 0 ? " none" : shorts.toString());
+		log.debug("  not an ordinary cell:{}", shorts.length() == 0 ? " none" : shorts.toString());
 		log.debug("  cell sizes: {}", shape);
 	}
 
