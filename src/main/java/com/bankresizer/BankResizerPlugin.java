@@ -197,8 +197,14 @@ public class BankResizerPlugin extends Plugin
 	/** Whether the geometry dump has already run for the current interface load. */
 	private boolean loggedGeometry;
 
-	/** Whether the item container has been dumped since the bank was opened. */
-	private boolean loggedItems;
+	/**
+	 * Mix of cell sizes last dumped, so that a view is recorded when its shape
+	 * changes rather than only when the bank is opened.
+	 *
+	 * Potion storage, the group storage and a tag tab all replace the container's
+	 * contents without the bank closing, so a once-per-open dump never saw them.
+	 */
+	private String loggedShape;
 
 	/**
 	 * Column count asked for when the bank was opened, held until it closes.
@@ -328,8 +334,8 @@ public class BankResizerPlugin extends Plugin
 
 		int delta = targetWidth - BankLayout.VANILLA_CONTAINER_WIDTH;
 
-		log.debug("Laying out bank at {} columns, container width {} (delta {})",
-			columns, targetWidth, delta);
+		log.debug("Laying out bank at {} columns, container width {} (delta {}), because {}",
+			columns, targetWidth, delta, staleReason(items, columns, canvasWidth, targetWidth));
 
 		boolean dump = log.isDebugEnabled() && !loggedGeometry;
 		if (dump)
@@ -380,10 +386,39 @@ public class BankResizerPlugin extends Plugin
 	 */
 	private boolean isUpToDate(Widget items, int columns, int canvasWidth, int targetWidth)
 	{
-		return modified
-			&& columns == appliedColumns
-			&& canvasWidth == appliedCanvasWidth
-			&& items.getOriginalWidth() == targetWidth;
+		return staleReason(items, columns, canvasWidth, targetWidth) == null;
+	}
+
+	/**
+	 * Why the layout has to be applied again, or null when it does not.
+	 *
+	 * Reported alongside each pass so that a bank relaid out repeatedly says which
+	 * of its inputs keeps changing, rather than leaving it to be guessed at.
+	 */
+	private String staleReason(Widget items, int columns, int canvasWidth, int targetWidth)
+	{
+		if (!modified)
+		{
+			return "nothing applied yet";
+		}
+
+		if (columns != appliedColumns)
+		{
+			return "columns changed from " + appliedColumns + " to " + columns;
+		}
+
+		if (canvasWidth != appliedCanvasWidth)
+		{
+			return "canvas changed from " + appliedCanvasWidth + " to " + canvasWidth;
+		}
+
+		if (items.getOriginalWidth() != targetWidth)
+		{
+			return "the game rebuilt the item container, its width is "
+				+ items.getOriginalWidth() + " not " + targetWidth;
+		}
+
+		return null;
 	}
 
 	/** Restores every widened widget and puts the grid back to vanilla columns. */
@@ -920,10 +955,18 @@ public class BankResizerPlugin extends Plugin
 			}
 		}
 
+		String shape = sizes.toString();
+		if (shape.equals(loggedShape))
+		{
+			return;
+		}
+
+		loggedShape = shape;
+
 		log.debug("item container: {} children, {} visible, {} hidden", children.length, visible, hidden);
 		log.debug("  first visible:{}", first.length() == 0 ? " none" : first.toString());
 		log.debug("  shorter than an item cell:{}", shorts.length() == 0 ? " none" : shorts.toString());
-		log.debug("  cell sizes: {}", sizes);
+		log.debug("  cell sizes: {}", shape);
 	}
 
 	/**
@@ -938,10 +981,9 @@ public class BankResizerPlugin extends Plugin
 			return;
 		}
 
-		if (log.isDebugEnabled() && !loggedItems)
+		if (log.isDebugEnabled())
 		{
 			logItemChildren(children);
-			loggedItems = true;
 		}
 
 		List<Widget> visible = new ArrayList<>();
@@ -1078,7 +1120,7 @@ public class BankResizerPlugin extends Plugin
 		resizedAncestors.clear();
 		modified = false;
 		loggedGeometry = false;
-		loggedItems = false;
+		loggedShape = null;
 		latchedColumns = -1;
 		appliedColumns = -1;
 		appliedCanvasWidth = -1;
