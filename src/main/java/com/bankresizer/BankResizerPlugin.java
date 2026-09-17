@@ -60,8 +60,11 @@ public class BankResizerPlugin extends Plugin
 	 * being mistaken for separators and given a row to themselves. The symptom was
 	 * the "view all items" tab appearing to lose its first group.
 	 *
-	 * The height test is what the client's own bank tags code uses to tell the two
-	 * apart, see LayoutManager in net.runelite.client.plugins.banktags.tabs.
+	 * The test is "shorter than an item", not "a different height from an item".
+	 * When a bank tag layout is involved the client pads empty slots out to 48x36
+	 * so that the grid has no gaps, so an inequality test called every padded
+	 * empty a separator and gave it a row of its own. LayoutManager.resetWidgets
+	 * uses the same less-than test to find where the items stop.
 	 */
 	private static final int ITEM_CELL_HEIGHT = BankLayout.ITEM_HEIGHT;
 
@@ -186,6 +189,9 @@ public class BankResizerPlugin extends Plugin
 
 	/** Whether the geometry dump has already run for the current interface load. */
 	private boolean loggedGeometry;
+
+	/** Whether the item container has been dumped since the bank was opened. */
+	private boolean loggedItems;
 
 	/** Column count and canvas width of the last layout actually applied. */
 	private int appliedColumns = -1;
@@ -749,6 +755,57 @@ public class BankResizerPlugin extends Plugin
 	}
 
 	/**
+	 * Dumps the shape of the item container once per bank open.
+	 *
+	 * Diagnostic only. The "view all items" tab has twice been laid out wrongly
+	 * because the separator and item children were assumed to be arranged in a way
+	 * they are not, so this records what is actually there rather than what was
+	 * expected: how many children exist, which of them are short enough to be
+	 * separators, and where the first visible items sit.
+	 */
+	private void logItemChildren(Widget[] children)
+	{
+		int visible = 0;
+		int hidden = 0;
+		StringBuilder shorts = new StringBuilder();
+		StringBuilder first = new StringBuilder();
+
+		for (int i = 0; i < children.length; i++)
+		{
+			Widget child = children[i];
+			if (child == null)
+			{
+				continue;
+			}
+
+			if (child.isSelfHidden())
+			{
+				hidden++;
+				continue;
+			}
+
+			visible++;
+
+			if (child.getOriginalHeight() < ITEM_CELL_HEIGHT)
+			{
+				shorts.append(String.format(" [%d h=%d w=%d x=%d y=%d type=%d text=%s]",
+					i, child.getOriginalHeight(), child.getOriginalWidth(),
+					child.getOriginalX(), child.getOriginalY(), child.getType(), child.getText()));
+			}
+			else if (visible <= 6)
+			{
+				first.append(String.format(" [%d item=%d h=%d w=%d x=%d y=%d]",
+					i, child.getItemId(), child.getOriginalHeight(), child.getOriginalWidth(),
+					child.getOriginalX(), child.getOriginalY()));
+			}
+		}
+
+		log.debug("item container: {} children, {} visible, {} hidden", children.length, visible, hidden);
+		log.debug("  first visible:{}", first.length() == 0 ? " none" : first.toString());
+		log.debug("  shorter than an item cell:{}", shorts.length() == 0 ? " none" : shorts.toString());
+	}
+
+	/**
 	 * Repositions every visible item using the same formula the game script uses,
 	 * then resizes the scroll region to match and rebuilds the scrollbar.
 	 */
@@ -758,6 +815,12 @@ public class BankResizerPlugin extends Plugin
 		if (children == null)
 		{
 			return;
+		}
+
+		if (log.isDebugEnabled() && !loggedItems)
+		{
+			logItemChildren(children);
+			loggedItems = true;
 		}
 
 		int padding = BankLayout.paddingFor(containerWidth, columns);
@@ -772,7 +835,7 @@ public class BankResizerPlugin extends Plugin
 				continue;
 			}
 
-			if (child.getOriginalHeight() != ITEM_CELL_HEIGHT)
+			if (child.getOriginalHeight() < ITEM_CELL_HEIGHT)
 			{
 				// Tab separators span a whole row. Close the current row first.
 				sawSeparator = true;
@@ -886,6 +949,7 @@ public class BankResizerPlugin extends Plugin
 		resizedAncestors.clear();
 		modified = false;
 		loggedGeometry = false;
+		loggedItems = false;
 		appliedColumns = -1;
 		appliedCanvasWidth = -1;
 	}
