@@ -5,11 +5,7 @@ import static org.junit.Assert.assertTrue;
 import net.runelite.api.widgets.WidgetSizeMode;
 import org.junit.Test;
 
-/**
- * Pins the ancestor rule to the chain measured on a live client. Getting this
- * wrong produced every symptom this plugin has had: a bank that shifted left, one
- * that appeared to shrink, and one whose buttons went off screen.
- */
+/** Pins the ancestor rule to a chain measured on a live client. */
 public class BankChainPlanTest
 {
 	private static final int ABS = WidgetSizeMode.ABSOLUTE;

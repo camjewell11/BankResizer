@@ -24,49 +24,23 @@ import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetSizeMode;
 
 /**
- * How much room the bank window has to grow, and which ancestors have to grow
- * with it.
- *
- * The bank does not sit directly on the canvas. Measured on a live client, the
- * chain above the bank window is:
- *
- * <pre>
- *   bank window      488 absolute
- *   group 12:0       512 minus      tracks its parent
- *   group 164:16     512 absolute   a fixed slot
- *   group 164:15     725 minus      the viewport, canvas minus the side panel
- *   group 164:91     940 absolute   the whole canvas
- * </pre>
- *
- * Two kinds of ancestor matter. One sized in {@code MINUS} mode stores an inset
- * and follows its parent, so it needs no help. One sized in {@code ABSOLUTE} mode
- * is a fixed slot: leave it alone and it clips the widened window, which is what
- * made the bank appear to shift left and lose a column off each edge.
- *
- * So every absolute ancestor below the full-canvas root is widened too, and the
- * limit is the narrowest tracking ancestor above them, 725 here rather than the
- * full 940. Walking the chain avoids naming group 164 child 16 directly, which
- * would be a magic number against a layout Jagex can change.
+ * How much room the bank window has to grow, and which ancestors must grow with
+ * it. The bank sits in a fixed slot inside the play area, not on the canvas, so
+ * the chain above it decides both the bound and what would clip a wider window.
  */
 final class BankRoom
 {
 	/** Ancestors with an absolute width, which have to be widened by hand. */
 	private final List<Widget> slots;
 
-	/**
-	 * The bank window and every ancestor in play, innermost first. Callers resize
-	 * in reverse so that a parent is sized before its children recompute from it.
-	 */
+	/** Window and ancestors in play, innermost first. Resize in reverse, so a
+	 * parent is sized before its children recompute from it. */
 	private final List<Widget> chain;
 
 	/**
-	 * The play area the bank sits in: the first ancestor above the slots, which
-	 * keeps its own size rather than being widened.
-	 *
-	 * Measured live at 725 by 550 on a 940 by 715 canvas, which is the canvas less
-	 * 215 pixels of side panel and 165 of chatbox. Bounding both axes by this
-	 * widget is what keeps a resized bank from running under the chatbox or out
-	 * across the inventory.
+	 * The play area: the first ancestor above the slots, which keeps its own size.
+	 * Measured live at 725x550 on a 940x715 canvas, the canvas less the side panel
+	 * and chatbox. Bounding by it keeps a wider bank off both.
 	 */
 	private final Widget viewport;
 
@@ -108,12 +82,7 @@ final class BankRoom
 		return limit;
 	}
 
-	/**
-	 * Measures the chain from {@code window} up to the root of the interface tree.
-	 *
-	 * @param window       the bank window widget
-	 * @param canvasWidth  width of the game canvas, used to spot the root
-	 */
+	/** Measures the chain from {@code window} up to the root of the tree. */
 	static BankRoom measure(Widget window, int canvasWidth)
 	{
 		if (window == null || canvasWidth <= 0)
@@ -127,8 +96,6 @@ final class BankRoom
 			chain.add(node);
 		}
 
-		// The rule itself lives in BankChainPlan so it can be unit tested without
-		// faking a widget tree.
 		int[] widths = new int[chain.size()];
 		int[] modes = new int[chain.size()];
 		for (int i = 0; i < chain.size(); i++)

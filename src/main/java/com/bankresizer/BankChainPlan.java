@@ -19,23 +19,9 @@ package com.bankresizer;
 import net.runelite.api.widgets.WidgetSizeMode;
 
 /**
- * Which ancestors of the bank window have to be resized, decided from widths and
- * width modes alone.
- *
- * Split out from {@link BankRoom} so the rule can be tested directly. The rule is
- * the subtlest thing in this plugin and it was arrived at by measuring a live
- * client, so it deserves to be pinned down rather than left implicit in a walk
- * over a widget tree that a test would have to fake.
- *
- * The live chain that produced it, on a 940 by 715 canvas:
- *
- * <pre>
- *   index 0   488 absolute   the bank window
- *   index 1   512 minus      tracks its parent
- *   index 2   512 absolute   a fixed slot, and what was clipping the window
- *   index 3   725 minus      the play area
- *   index 4   940 absolute   the whole canvas
- * </pre>
+ * Which ancestors of the bank window must be resized, from widths and modes
+ * alone. Split from {@link BankRoom} so the rule is testable without a fake
+ * tree. Live chain: 488 abs, 512 minus, 512 abs slot, 725 minus play area.
  */
 final class BankChainPlan
 {

@@ -21,27 +21,9 @@ import java.util.Iterator;
 import java.util.List;
 
 /**
- * Works out which row and column each bank item should move to.
- *
- * The one thing this exists to get right is that <b>the order of the children in
- * the item container is not the order they appear on screen</b>. Laying them out
- * in array order was wrong, and it was wrong in a way that was invisible on an
- * ordinary tab and obvious on "view all items". Measured on a live client:
- *
- * <pre>
- *   child 0     an item, at y=804
- *   child 1410  a separator, 2px tall and 374 wide, at y=797
- * </pre>
- *
- * Child 0 is drawn below the first separator, so the group the game puts at the
- * top of the tab is held in children with much higher indices. Re-flowing in
- * array order moved that whole group to the bottom of a scroll more than a
- * thousand items long, which read as the first group having gone missing.
- *
- * The existing positions are therefore the only record of the intended order,
- * and this sorts by them. Separators are not interleaved with the items at all;
- * they sit at the end of the array and are placed purely by their y, so they are
- * merged back in by comparing that y against the items around them.
+ * Where each bank item moves to, in pixels. The container's child order is not
+ * its on screen order, so ordering comes from the positions the children already
+ * hold: on "view all items" child 0 sits at y=804, below a separator at y=797.
  */
 final class BankGrid
 {
@@ -53,12 +35,9 @@ final class BankGrid
 		/** A thin rule dividing two groups, spanning the grid. */
 		RULE,
 		/**
-		 * A block covering the unused cells at the end of a group's last row.
-		 *
-		 * Measured live, these are item height, carry no item, and are exactly
-		 * {@code n * 48 - 12} wide for the n cells they cover: 84 for two, 180 for
-		 * four, 324 for seven. How many cells are spare depends on the column
-		 * count, so a filler cannot be moved, only worked out again.
+		 * A block covering the unused cells at the end of a group's last row. How
+		 * many are spare depends on the column count, so it is worked out again
+		 * rather than moved. Live widths are n * 48 - 12 for the n cells covered.
 		 */
 		FILLER
 	}
@@ -141,12 +120,9 @@ final class BankGrid
 	}
 
 	/**
-	 * What a child carrying {@code itemId} and standing {@code height} tall is.
-	 *
-	 * Item id rather than width, because this plugin resizes the fillers itself: a
-	 * filler covering a single cell comes out 36 wide, exactly an item's width, so
-	 * a width test would promote it to an item on the following pass. Only rules
-	 * and fillers carry no item; a vanilla empty slot holds a placeholder.
+	 * What a child of this item id and height is. Keyed on item id, not width:
+	 * a filler covering one cell is resized to an item's 36 wide, so a width
+	 * test would promote it to an item on the next pass.
 	 */
 	static Kind kindOf(int itemId, int height)
 	{
@@ -161,10 +137,8 @@ final class BankGrid
 	/** Item id of a child that holds no item. */
 	static final int NO_ITEM = -1;
 
-	/**
-	 * Plans a grid {@code columns} wide from the positions and sizes the children
-	 * already hold.
-	 */
+	/** Plans a grid {@code columns} wide from the positions and sizes the
+	 * children already hold. */
 	static Plan plan(int[] xs, int[] ys, int[] itemIds, int[] heights, int columns)
 	{
 		if (xs == null || ys == null || itemIds == null || heights == null
@@ -301,10 +275,9 @@ final class BankGrid
 	private static int flush(List<Cell> cells, List<Integer> pending, int[] xs, int[] ys,
 		int[] itemIds, int[] heights, int y, int column, int width, boolean anyPlaced)
 	{
-		// A row that came out exactly full has already wrapped the column back to
-		// zero, which otherwise looks the same as the start of a fresh row. Once
-		// any item has been placed, a zero column means the row before it was
-		// full, so there is nothing spare and the block collapses.
+		// A full row has already wrapped the column to zero, which looks like the
+		// start of a fresh one. Once an item is placed, a zero column means the
+		// row before was full, so nothing is spare and the block collapses.
 		int spare = column == 0 && anyPlaced ? 0 : Math.max(0, width - column);
 
 		for (Iterator<Integer> it = pending.iterator(); it.hasNext(); )

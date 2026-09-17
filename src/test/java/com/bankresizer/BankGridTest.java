@@ -5,11 +5,7 @@ import static org.junit.Assert.assertTrue;
 import java.util.List;
 import org.junit.Test;
 
-/**
- * Pins the ordering rule that the "view all items" tab exposed: the item
- * container's child order is not its on screen order, and separators are held at
- * the end of the array rather than between the groups they divide.
- */
+/** Pins the ordering rule "view all items" exposed: child order is not screen order. */
 public class BankGridTest
 {
 

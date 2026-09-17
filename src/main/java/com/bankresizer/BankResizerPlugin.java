@@ -53,20 +53,8 @@ import net.runelite.client.plugins.banktags.BankTagsService;
 public class BankResizerPlugin extends Plugin
 {
 	/**
-	 * Height of a bank item cell. A dynamic child of the item container that is
-	 * this tall is an item; anything else is a tab separator.
-	 *
-	 * This replaced a fixed child index of 816, taken from the slot at which
-	 * [proc,bankmain_build] begins its separator sweep. That index is the bank's
-	 * capacity, which Jagex has raised since, so on a large bank real items were
-	 * being mistaken for separators and given a row to themselves. The symptom was
-	 * the "view all items" tab appearing to lose its first group.
-	 *
-	 * The test is "shorter than an item", not "a different height from an item".
-	 * When a bank tag layout is involved the client pads empty slots out to 48x36
-	 * so that the grid has no gaps, so an inequality test called every padded
-	 * empty a separator and gave it a row of its own. LayoutManager.resetWidgets
-	 * uses the same less-than test to find where the items stop.
+	 * Height of a bank item cell. A dynamic child of the item container that
+	 * is this tall is an item; anything else is a tab separator.
 	 */
 	private static final int ITEM_CELL_HEIGHT = BankLayout.ITEM_HEIGHT;
 
@@ -74,9 +62,9 @@ public class BankResizerPlugin extends Plugin
 	private static final int EDGE_MARGIN = 4;
 
 	/**
-	 * Chrome width assumed when the bank frame cannot be measured. Deliberately
-	 * generous: overestimating costs a column, underestimating pushes the bank
-	 * past the edge of the client.
+	 * Chrome width assumed when the bank frame cannot be measured.
+	 * Deliberately generous: overestimating costs a column, underestimating
+	 * pushes the bank past the edge of the client.
 	 */
 	private static final int FALLBACK_CHROME_WIDTH = 60;
 
@@ -84,23 +72,8 @@ public class BankResizerPlugin extends Plugin
 	private static final int MAX_PLAUSIBLE_CHROME_WIDTH = 200;
 
 	/**
-	 * Widgets inside the bank that must be widened by hand.
-	 *
-	 * Deliberately short. Most of the bank chrome is sized in {@code MINUS} mode,
-	 * where the stored value is an inset from the parent rather than a width, so
-	 * those widgets follow the window for free. Widening them by hand increases
-	 * their inset and makes them shrink instead: FRAME, ITEMS_CONTAINER and
-	 * BOTTOM all behaved that way before this list was cut down. SCROLLBAR is
-	 * right anchored and moves on its own.
-	 *
-	 * The bank window and its fixed-width ancestors are not listed here. They are
-	 * found by walking the widget tree, see {@link BankRoom}.
-	 *
-	 * TABS is deliberately absent. It centres its own icons within its width, so
-	 * widening it spread the tab strip across the wider window and opened a gap
-	 * between the first tab and the left edge of the bank. Left at its vanilla
-	 * width the strip keeps vanilla spacing and stays aligned with the item grid,
-	 * which is where the eye expects it.
+	 * Widgets inside the bank that must be widened by hand. Deliberately
+	 * short.
 	 */
 	private static final int[] WIDTH_TRACKING = {
 		// The title bar is 476 wide in absolute mode, so it would sit short of the
@@ -118,42 +91,27 @@ public class BankResizerPlugin extends Plugin
 	private BankResizerConfig config;
 
 	/**
-	 * The bank tags plugin, when it is loaded, used only to ask whether a layout
-	 * currently owns the item positions.
-	 *
-	 * Optional because a client without the bank tags plugin has no binding for
-	 * it, and a missing binding would stop this plugin loading at all. Everything
-	 * that reads it treats null as "no layout active".
+	 * The bank tags plugin, when it is loaded, used only to ask whether a
+	 * layout currently owns the item positions.
 	 */
 	@com.google.inject.Inject(optional = true)
 	private BankTagsService bankTagsService;
 
 	/**
-	 * Untouched width of every widget this plugin has widened, keyed by component
-	 * id. Widths are always assigned as original plus delta rather than added to,
-	 * so that repeated layout passes are idempotent. Cleared whenever the bank
-	 * interface unloads, because the widget tree is rebuilt from scratch.
+	 * Untouched width of every widget this plugin has widened, keyed by
+	 * component id. Widths are always assigned as original plus delta rather
+	 * than added to, so that repeated layout passes are idempotent.
 	 */
 	private final Map<Integer, WidgetSize> originalWidths = new HashMap<>();
 
 	/**
 	 * Ancestors this plugin has resized, held directly rather than looked up.
-	 *
-	 * The outer slot belongs to the layout interface, not the bank, so it outlives
-	 * the bank closing while the bank's own widgets are rebuilt. Without putting it
-	 * back explicitly its widened size gets recaptured as the original next time
-	 * the bank opens, and it creeps wider on every open.
+	 * The outer slot belongs to the layout interface, not the bank, so it
+	 * outlives the bank closing while the bank's own widgets are rebuilt.
 	 */
 	private final List<Widget> resizedAncestors = new ArrayList<>();
 
-	/**
-	 * A widget's width as it was before this plugin touched it.
-	 *
-	 * Records the rendered width as well as the stored one because they differ for
-	 * anything not sized in absolute mode, where the stored value is an inset. The
-	 * rendered width is what a delta has to be added to; the stored width and mode
-	 * are what has to go back on restore.
-	 */
+	/** A widget's width as it was before this plugin touched it. */
 	private static final class WidgetSize
 	{
 		private final int originalWidth;
@@ -189,54 +147,35 @@ public class BankResizerPlugin extends Plugin
 	}
 
 	/**
-	 * Whether this plugin currently has the bank in a non-vanilla layout. Lets the
-	 * vanilla column count be a genuine no-op while still undoing our own work if
-	 * the user turns the column count back down.
+	 * Whether this plugin currently has the bank in a non-vanilla layout.
+	 * Lets the vanilla column count be a genuine no-op while still undoing
+	 * our own work if the user turns the column count back down.
 	 */
 	private boolean modified;
 
-	/** Whether the geometry dump has already run for the current interface load. */
 	private boolean loggedGeometry;
 
-	/**
-	 * Mix of cell sizes last dumped, so that a view is recorded when its shape
-	 * changes rather than only when the bank is opened.
-	 *
-	 * Potion storage, the group storage and a tag tab all replace the container's
-	 * contents without the bank closing, so a once-per-open dump never saw them.
-	 */
+	/** Cell sizes last dumped, so a view is recorded when its shape changes. */
 	private String loggedShape;
 
 	/** Geometry of the potion store last dumped, for the same reason. */
 	private String loggedPotionShape;
 
 
-	/** Layout passes since the last timing report. */
+	/** Cost of laying out, accumulated between timing reports. */
 	private int passes;
 
-	/** Nanoseconds spent laying out since the last timing report. */
 	private long totalNanos;
 
-	/** Longest single pass since the last timing report. */
 	private long worstNanos;
 
-	/** Widgets repositioned by the most recent pass. */
 	private int movedWidgets;
 
-	/** Widgets repositioned since the last timing report. */
 	private long totalMoved;
 
-	/** When the current timing window started. */
 	private long windowStartedNanos;
 
-	/**
-	 * Column count asked for when the bank was opened, held until it closes.
-	 *
-	 * Changing the count with the bank open left it half rebuilt, because the game
-	 * positions its own widgets only when it builds the interface, so a new count
-	 * reached some of them and not others. {@code -1} means nothing is latched and
-	 * the next layout will take the configured value.
-	 */
+	/** Column count asked for when the bank was opened, held until it closes. */
 	private int latchedColumns = -1;
 
 	/** Column count and canvas width of the last layout actually applied. */
@@ -290,10 +229,7 @@ public class BankResizerPlugin extends Plugin
 			return;
 		}
 
-		// No check for an open bank here. Config events arrive on the AWT thread,
-		// where widgets cannot be read, and a check here would not hold anyway: the
-		// bank's own scripts call applyLayout on every rebuild and would pick the
-		// new value up regardless. The count is latched at open instead.
+		// No check for an open bank here.
 		clientThread.invokeLater(this::applyLayout);
 	}
 
@@ -317,13 +253,9 @@ public class BankResizerPlugin extends Plugin
 	}
 
 	/**
-	 * Widens the bank chrome and lays the item grid out again at the configured
-	 * column count. Safe to call when the bank is closed, in which case it does
-	 * nothing.
-	 *
-	 * At the vanilla column count this touches no widget at all. The game has
-	 * already drawn that layout correctly, so the plugin stays invisible until
-	 * the user actually asks for more columns.
+	 * Widens the bank chrome and lays the item grid out again at the
+	 * configured column count. Safe to call when the bank is closed, in which
+	 * case it does nothing.
 	 */
 	private void applyLayout()
 	{
@@ -333,18 +265,12 @@ public class BankResizerPlugin extends Plugin
 			return;
 		}
 
-		// Before any of the early returns below. The store is its own container and
-		// its widgets outlive the bank closing, so reopening a bank that was last
-		// showing the store finds them still where they were left. On that pass the
-		// store is not visible yet, and by the time it is, the bank's own layout is
-		// up to date and every later pass returns before reaching here. That left
-		// the store wrong until it was closed and reopened by hand.
+		// Before any of the early returns below.
 		spreadPotionEntries();
 
-		// Fixed mode lays the interface out differently and the measurement that
-		// bounds the width finds the whole canvas rather than the game area, so
-		// extra columns ran out over the inventory and minimap. The bank is left
-		// alone there until that is measured properly.
+		// Fixed mode lays the interface out differently and the measurement
+		// that bounds the width finds the whole canvas rather than the game
+		// area, so extra columns ran out over the inventory and minimap.
 		if (!client.isResized())
 		{
 			if (modified)
@@ -381,11 +307,7 @@ public class BankResizerPlugin extends Plugin
 		int canvasHeight = client.getCanvasHeight();
 
 		// A resize invalidates everything measured so far: the play area, the
-		// ancestor widths, and the sizes saved to undo them by. Rather than try to
-		// re-derive all of it against a bank the client is midway through relaying
-		// out, hand the bank back to the game and stay out of the way until it is
-		// reopened. Otherwise the bank can be left in a state that has to be closed
-		// with a hotkey before it works again.
+		// ancestor widths, and the sizes saved to undo them by.
 		if (modified && (canvasWidth != appliedCanvasWidth || canvasHeight != appliedCanvasHeight))
 		{
 			log.debug("Client resized to {}x{}; returning the bank to {} columns until reopened",
@@ -428,10 +350,7 @@ public class BankResizerPlugin extends Plugin
 			logGeometry("before");
 		}
 
-		// Before resizeChrome, and it has to stay that way. Pinning reads the
-		// position the strip is sitting at, and once the window has been widened
-		// the strip has already re-centred into it, so reading it afterwards
-		// captures the centred position and pins the strip right back where it was.
+		// Before resizeChrome, and it has to stay that way.
 		pinTabsLeft(delta);
 		resizeChrome(delta);
 		shiftBottomRow(delta);
@@ -466,28 +385,16 @@ public class BankResizerPlugin extends Plugin
 	}
 
 	/**
-	 * Whether the bank already carries the layout we would apply, in which case
-	 * there is nothing to do.
-	 *
-	 * This is what keeps the plugin off the hot path. The layout hooks fire on
-	 * every client tick while the bank is open, and without this guard the plugin
-	 * relaid 816 widgets and ran a script fifty times a second.
-	 *
-	 * The item container width is the reliable signal. [proc,bankmain_build]
-	 * assigns it an absolute 460 on every rebuild, so seeing our own target width
-	 * there proves no rebuild has happened since we last ran.
+	 * Whether the bank already carries the layout we would apply, in which
+	 * case there is nothing to do. This is what keeps the plugin off the hot
+	 * path.
 	 */
 	private boolean isUpToDate(Widget items, int columns, int canvasWidth, int targetWidth)
 	{
 		return staleReason(items, columns, canvasWidth, targetWidth) == null;
 	}
 
-	/**
-	 * Why the layout has to be applied again, or null when it does not.
-	 *
-	 * Reported alongside each pass so that a bank relaid out repeatedly says which
-	 * of its inputs keeps changing, rather than leaving it to be guessed at.
-	 */
+	/** Why the layout has to be applied again, or null when it does not. */
 	private String staleReason(Widget items, int columns, int canvasWidth, int targetWidth)
 	{
 		if (!modified)
@@ -520,7 +427,6 @@ public class BankResizerPlugin extends Plugin
 		return null;
 	}
 
-	/** Restores every widened widget and puts the grid back to vanilla columns. */
 	private void restoreLayout()
 	{
 		Widget items = client.getWidget(InterfaceID.Bankmain.ITEMS);
@@ -540,18 +446,7 @@ public class BankResizerPlugin extends Plugin
 		}
 	}
 
-	/**
-	 * Whether something other than the game script is deciding where the items go.
-	 *
-	 * A bank tag layout stores an item per position in a flat array and draws it
-	 * at a position derived from its index with a hardcoded eight per row, in
-	 * LayoutManager. Relaying those items out underneath it produces a grid that
-	 * disagrees with the layout the user arranged, so when a layout is active the
-	 * items are left exactly where it put them and only the frame is widened.
-	 *
-	 * Plugins that present their own view of the bank through a bank tag, rather
-	 * than by positioning widgets themselves, are covered by the same check.
-	 */
+	/** Whether another plugin, not the game script, is placing the items. */
 	private boolean itemsOwnedByAnotherPlugin(Widget items)
 	{
 		if (bankTagsService != null && bankTagsService.getActiveLayout() != null)
@@ -559,15 +454,8 @@ public class BankResizerPlugin extends Plugin
 			return true;
 		}
 
-		// A layout pads its empty slots out to exactly one cell plus one gap, 48x36,
-		// so that its grid closes up. Inventory Setups is drawn this way while
-		// getActiveLayout() reports nothing, so this size is the more reliable
-		// signal of the two.
-		//
-		// The test is that exact pair and not merely "not the game's 36x32", which
-		// was the first attempt. A plain bank evidently holds at least one visible
-		// cell of some other size, so the looser test fired on an ordinary tab and
-		// stopped the columns being applied at all.
+		// A layout pads its empty slots out to exactly one cell plus one gap,
+		// 48x36, so that its grid closes up.
 		Widget[] children = items.getDynamicChildren();
 		if (children == null)
 		{
@@ -593,10 +481,7 @@ public class BankResizerPlugin extends Plugin
 		return false;
 	}
 
-	/**
-	 * Column count to use, honouring the configured value but never letting the
-	 * bank grow past the edge of the viewport.
-	 */
+	/** Column count to use, capped to what the viewport can hold. */
 	private int resolveColumns()
 	{
 		if (latchedColumns < 0)
@@ -612,17 +497,7 @@ public class BankResizerPlugin extends Plugin
 		return Math.max(BankLayout.VANILLA_COLUMNS, Math.min(latchedColumns, limit));
 	}
 
-	/**
-	 * How wide the item container is allowed to become without any part of the
-	 * bank leaving the visible client.
-	 *
-	 * The bank window is centre anchored, so it grows equally in both directions
-	 * and its centre stays put. That makes the binding constraint the distance
-	 * from that centre to the nearer edge of the canvas, not the canvas width.
-	 * Measured on a live client the centre sits at x=362 on a 940 wide canvas, so
-	 * the window can reach 724 wide before its left edge passes zero, well short
-	 * of the 940 a plain canvas-width bound would have allowed.
-	 */
+	/** Widest the item container may become without leaving the viewport. */
 	private int availableContainerWidth()
 	{
 		int canvasWidth = client.getCanvasWidth();
@@ -632,26 +507,13 @@ public class BankResizerPlugin extends Plugin
 			return BankLayout.VANILLA_CONTAINER_WIDTH;
 		}
 
-		// The play area, which does not change as the bank grows. Deliberately not
-		// derived from the bank's own width or position: those move when we widen
-		// it, which fed back into the column count and left it oscillating between
-		// nine and ten columns on alternate passes.
-		//
-		// No separate canvas check is needed. The play area sits inside the canvas
-		// already, so a window that fits inside it cannot leave the screen.
+		// The play area, which does not change as the bank grows.
 		int maxWindow = BankRoom.measure(root, canvasWidth).getLimit() - 2 * EDGE_MARGIN;
 
 		return maxWindow - measuredChrome();
 	}
 
-	/**
-	 * Width of the bank window that is not item grid: borders, and the inset the
-	 * grid sits at. Measured on a live client as 488 minus 460, so 28.
-	 *
-	 * Read from UNIVERSE, which is the bank window and is sized in ABSOLUTE mode.
-	 * FRAME looks like the natural choice but is sized in MINUS mode with a
-	 * stored 0, which yields a meaningless negative number.
-	 */
+	/** Bank window width that is not item grid. Live: 488 less 460, so 28. */
 	private int measuredChrome()
 	{
 		Widget root = client.getWidget(InterfaceID.Bankmain.UNIVERSE);
@@ -669,10 +531,7 @@ public class BankResizerPlugin extends Plugin
 		return chrome;
 	}
 
-	/**
-	 * Dumps the geometry this plugin depends on. Debug only, and only while the
-	 * widget set is still being confirmed against a running client.
-	 */
+	/** Dumps the geometry this plugin depends on. Debug only. */
 	private void logGeometry(String phase)
 	{
 		log.debug("--- bank geometry [{}] canvas {}x{}",
@@ -690,12 +549,9 @@ public class BankResizerPlugin extends Plugin
 	}
 
 	/**
-	 * Walks from the bank window up to the root of the interface tree.
-	 *
-	 * This is the measurement that decides whether widening the bank window can
-	 * work at all. If an ancestor is narrower than the width we want and clips its
-	 * children, growing the window only pushes content out of view instead of
-	 * revealing more of it.
+	 * Walks from the bank window up to the root of the interface tree. This
+	 * is the measurement that decides whether widening the bank window can
+	 * work at all.
 	 */
 	private void logParentChain()
 	{
@@ -724,14 +580,7 @@ public class BankResizerPlugin extends Plugin
 		}
 	}
 
-	/**
-	 * Dumps the bank's own buttons and panels.
-	 *
-	 * The chrome is what decides whether a widened bank is usable. A child pinned
-	 * to the left edge keeps its position when the window grows, which is fine for
-	 * something on the left and wrong for anything that belongs near the right,
-	 * so this prints each one's position mode alongside its bounds.
-	 */
+	/** Dumps the bank's own buttons and panels. Debug only. */
 	private void logBankChildren()
 	{
 		Widget window = client.getWidget(InterfaceID.Bankmain.UNIVERSE);
@@ -809,19 +658,12 @@ public class BankResizerPlugin extends Plugin
 
 	/**
 	 * Applies {@code delta} extra pixels of width to each chrome widget.
-	 *
-	 * Skips anything not sized in {@code ABSOLUTE} mode. In the other modes the
-	 * stored value is an inset from the parent rather than a width, so adding to
-	 * it shrinks the widget instead of growing it.
+	 * Skips anything not sized in {@code ABSOLUTE} mode.
 	 */
 	private void resizeChrome(int delta)
 	{
-		// The bank window and every fixed-width ancestor holding it. Widening the
-		// window alone leaves it inside a 512 wide slot that clips it.
-		//
-		// Outermost first, because revalidate() recomputes only the widget it is
-		// called on. Resizing bottom up left the ancestors between the slot and the
-		// window still laid out against the old width.
+		// The bank window and every fixed-width ancestor holding it. Widening
+		// the window alone leaves it inside a 512 wide slot that clips it.
 		Widget root = client.getWidget(InterfaceID.Bankmain.UNIVERSE);
 		BankRoom room = BankRoom.measure(root, client.getCanvasWidth());
 		List<Widget> chain = room.getChain();
@@ -845,11 +687,7 @@ public class BankResizerPlugin extends Plugin
 				}
 				else
 				{
-					// Ancestors cannot be restored by mode. Handing back the stored
-					// inset and revalidating is what blew the interface root up to
-					// the full canvas in the first place, so put the measured pixels
-					// back instead. The client rebuilds these with their own modes
-					// when the interface next opens.
+					// Ancestors cannot be restored by mode.
 					node.setWidthMode(WidgetSizeMode.ABSOLUTE);
 					node.setOriginalWidth(size.renderedWidth);
 					node.setHeightMode(WidgetSizeMode.ABSOLUTE);
@@ -860,21 +698,14 @@ public class BankResizerPlugin extends Plugin
 				continue;
 			}
 
-			// Set the width outright rather than letting the client derive it. The
-			// interface root is handed its size when the interface opens into its
-			// slot; its stored inset is 0, so revalidate() resolves it against the
-			// screen instead and stretches it to the full canvas.
+			// Set the width outright rather than letting the client derive
+			// it.
 			node.setWidthMode(WidgetSizeMode.ABSOLUTE);
 			node.setOriginalWidth(size.renderedWidth + delta);
 
-			// Same problem vertically, and worse: revalidating the interface root
-			// grew it from the play area's 550 to the full 715 canvas, so the bank
-			// sat in a container 165px too tall and its lower chrome was pushed
-			// down behind the chatbox. Pin the ancestors to the play area, which is
-			// measured live so it still tracks a resized client.
-			//
-			// The bank window itself is left alone here. Its height is either the
-			// game's own or the configured row count, handled by the caller.
+			// Same problem vertically, and worse: revalidating the interface
+			// root grew it from the play area's 550 to the full 715 canvas,
+			// so the bank sat in a container 165px too tall and its lower
 			if (i > 0 && playAreaHeight > 0)
 			{
 				node.setHeightMode(WidgetSizeMode.ABSOLUTE);
@@ -916,19 +747,6 @@ public class BankResizerPlugin extends Plugin
 		}
 	}
 
-	/**
-	 * Holds the tab strip against the left of the widened window.
-	 *
-	 * The strip is centre anchored, so it re-centres itself in the wider window
-	 * and leaves a growing gap between the first tab and the left edge of the
-	 * bank. Taking it out of the widening list was not enough on its own, because
-	 * the anchor, not the width, is what moves it.
-	 *
-	 * Pinning uses the position the strip rendered at before anything was touched,
-	 * so it lands exactly where the unmodified client drew it. That is why this
-	 * runs before the window is widened: afterwards the strip has re-centred and
-	 * the position read back is the one being corrected.
-	 */
 	private void pinTabsLeft(int delta)
 	{
 		Widget tabs = client.getWidget(InterfaceID.Bankmain.TABS);
@@ -953,22 +771,6 @@ public class BankResizerPlugin extends Plugin
 		tabs.revalidate();
 	}
 
-	/**
-	 * Moves the right hand end of the bottom button row out with the window.
-	 *
-	 * Every one of the row's 18 buttons is pinned to the left edge at a fixed
-	 * offset, and together they fill the vanilla width exactly, ending 2px short
-	 * of the right edge. Widen the row and they all stay put, stranding the right
-	 * hand controls mid-window with a gap beside them.
-	 *
-	 * The row already has a separator near its midpoint, so the split falls where
-	 * the interface designers put one: controls left of it keep their place, the
-	 * group right of it moves with the edge.
-	 *
-	 * Offsets come from the saved originals rather than current positions, because
-	 * this also runs on passes where the game has not rebuilt the row, and reading
-	 * back an already shifted offset would move it twice.
-	 */
 	private void shiftBottomRow(int delta)
 	{
 		Widget bottom = client.getWidget(InterfaceID.Bankmain.BOTTOM);
@@ -1002,15 +804,6 @@ public class BankResizerPlugin extends Plugin
 		}
 	}
 
-	/**
-	 * Accumulates the cost of one layout pass and reports it periodically.
-	 *
-	 * The bank rebuilds several times a second while it is open and this plugin
-	 * follows each rebuild, so the figure that matters is not one pass but the
-	 * share of a second they add up to. Reported every 25 passes with the worst
-	 * single pass alongside the average, because an occasional long pass is what
-	 * would show as a stutter rather than a lower frame rate.
-	 */
 	private void recordPass(long nanos)
 	{
 		if (passes == 0)
@@ -1045,32 +838,6 @@ public class BankResizerPlugin extends Plugin
 		totalMoved = 0;
 	}
 
-	/**
-	 * Spreads the potion store's entries to match the width they were given.
-	 *
-	 * The store is an overlay covering the item area, so its container has to span
-	 * the widened bank and cannot simply be held at its old size; doing that left a
-	 * strip down its left uncovered with the bank showing through.
-	 *
-	 * The game script sizes each entry from the container width but lays the two
-	 * columns out on a pitch fixed at the vanilla width, so at a container of 521
-	 * the entries come out 252 wide on a 204 pitch and overlap by 48px. At the
-	 * vanilla 425 the two agree, which is why an unmodified client never shows it.
-	 *
-	 * Known gap, to revisit: stepping the column count down to 8 and back up with
-	 * the store as the last open tab still leaves entries misaligned until the
-	 * store itself is reopened. Reopening the bank does not clear it. The offsets
-	 * agreed on by most entries are what gets applied, so a store that is mostly
-	 * wrong agrees on the wrong answer, and nothing in a bank rebuild makes the
-	 * game relay the store to break the tie.
-	 *
-	 * Nothing here trusts an entry to be where it was left. The store's widgets
-	 * outlive the bank closing, the game relays some of them on its own schedule,
-	 * and another plugin may reorder them, so an entry can be found part way
-	 * through someone else's arrangement. A column comes from the entry's place in
-	 * its row, and the offsets inside an entry come from what most entries agree
-	 * on, so a store found in a bad state is put right rather than carried forward.
-	 */
 	private void spreadPotionEntries()
 	{
 		Widget items = client.getWidget(InterfaceID.Bankmain.POTIONSTORE_ITEMS);
@@ -1123,12 +890,8 @@ public class BankResizerPlugin extends Plugin
 			? Integer.compare(a[3], b[3])
 			: a[2] != b[2] ? Integer.compare(a[2], b[2]) : Integer.compare(a[0], b[0]));
 
-		// Every entry is built the same way, so the offset of each part is taken as
-		// the one most of them agree on. Earlier versions measured each entry
-		// against its own block, which carried that entry's damage forward: an
-		// entry left crooked by a previous pass stayed crooked, and its icon and
-		// text drifted behind the neighbouring column. A handful of crooked entries
-		// cannot outvote the rest, so they are put right instead.
+		// Every entry is built the same way, so the offset of each part is
+		// taken as the one most of them agree on.
 		int icon = commonOffset(children, entries, Part.ICON);
 		int text = commonOffset(children, entries, Part.TEXT);
 		int heart = commonOffset(children, entries, Part.HEART);
@@ -1166,13 +929,8 @@ public class BankResizerPlugin extends Plugin
 	}
 
 	/**
-	 * Whether this child is part of the given entry rather than something drawn
-	 * between entries.
-	 *
-	 * By its y, which is never written here. An entry's range runs from its block
-	 * to the next one, so a section heading such as "Potions" or "Vials" falls
-	 * inside the range of whichever entry precedes it. Treating those as the
-	 * entry's own text moved them to where an entry's text belongs.
+	 * Whether this child is part of the given entry rather than something
+	 * drawn between entries. By its y, which is never written here.
 	 */
 	private boolean partOfEntry(Widget child, int[] entry)
 	{
@@ -1180,7 +938,6 @@ public class BankResizerPlugin extends Plugin
 			&& child.getOriginalY() < entry[3] + BankLayout.ROW_PITCH;
 	}
 
-	/** The parts an entry is built from, told apart by size and type. */
 	private enum Part
 	{
 		BLOCK, ICON, TEXT, HEART
@@ -1286,14 +1043,6 @@ public class BankResizerPlugin extends Plugin
 		return 0;
 	}
 
-	/**
-	 * Dumps the potion store's geometry when it changes.
-	 *
-	 * The potion store is drawn into POTIONSTORE_ITEMS, a container of its own
-	 * rather than the bank's item container, so nothing this plugin does to the
-	 * item grid reaches it. What does reach it is the window growing underneath
-	 * it, which is the likely source of its misalignment.
-	 */
 	private void logPotionStore()
 	{
 		Widget items = client.getWidget(InterfaceID.Bankmain.POTIONSTORE_ITEMS);
@@ -1364,15 +1113,7 @@ public class BankResizerPlugin extends Plugin
 		}
 	}
 
-	/**
-	 * Dumps the shape of the item container once per bank open.
-	 *
-	 * Diagnostic only. The "view all items" tab has twice been laid out wrongly
-	 * because the separator and item children were assumed to be arranged in a way
-	 * they are not, so this records what is actually there rather than what was
-	 * expected: how many children exist, which of them are short enough to be
-	 * separators, and where the first visible items sit.
-	 */
+	/** Dumps what the item container holds. Debug only. */
 	private void logItemChildren(Widget[] children)
 	{
 		int visible = 0;
@@ -1440,8 +1181,9 @@ public class BankResizerPlugin extends Plugin
 	}
 
 	/**
-	 * Repositions every visible item using the same formula the game script uses,
-	 * then resizes the scroll region to match and rebuilds the scrollbar.
+	 * Repositions every visible item using the same formula the game script
+	 * uses, then resizes the scroll region to match and rebuilds the
+	 * scrollbar.
 	 */
 	private void layoutItems(Widget items, int columns, int containerWidth)
 	{
@@ -1525,12 +1267,9 @@ public class BankResizerPlugin extends Plugin
 	}
 
 	/**
-	 * Sets the scroll region and asks the game to rebuild the scrollbar so the
-	 * thumb matches the new content height.
-	 *
-	 * The scrollbar rebuild has to be deferred. This runs from a script event, so
-	 * the script VM is still on the stack, and calling into it again throws
-	 * "scripts are not reentrant".
+	 * Sets the scroll region and asks the game to rebuild the scrollbar so
+	 * the thumb matches the new content height. The scrollbar rebuild has to
+	 * be deferred.
 	 */
 	private void applyScroll(Widget items, int scrollHeight)
 	{
@@ -1540,7 +1279,6 @@ public class BankResizerPlugin extends Plugin
 		clientThread.invokeLater(() -> rebuildScrollbar(scrollHeight));
 	}
 
-	/** Runs the game's own scrollbar rebuild against the new content height. */
 	private void rebuildScrollbar(int scrollHeight)
 	{
 		Widget items = client.getWidget(InterfaceID.Bankmain.ITEMS);
@@ -1559,13 +1297,7 @@ public class BankResizerPlugin extends Plugin
 			scrollY);
 	}
 
-	/**
-	 * Puts every resized ancestor back to the size it had before this plugin
-	 * touched it.
-	 *
-	 * Works off held references rather than the widget tree, because this runs
-	 * while the bank interface is being torn down and cannot be looked up.
-	 */
+	/** Puts every resized ancestor back to its untouched size. */
 	private void restoreAncestors()
 	{
 		for (Widget node : resizedAncestors)
@@ -1586,11 +1318,7 @@ public class BankResizerPlugin extends Plugin
 		resizedAncestors.clear();
 	}
 
-	/**
-	 * Forgets everything cached about the current bank interface. Called whenever
-	 * the interface is torn down, because the widget tree is rebuilt from scratch
-	 * and the captured widths no longer refer to anything.
-	 */
+	/** Forgets everything cached about the current bank interface. */
 	private void resetState()
 	{
 		originalWidths.clear();
@@ -1611,11 +1339,7 @@ public class BankResizerPlugin extends Plugin
 		return originalWidths.computeIfAbsent(widget.getId(), id -> new WidgetSize(widget));
 	}
 
-	/**
-	 * Rendered width the widget had before this plugin first touched it. This is
-	 * the figure a delta is added to, not the stored width, which is an inset for
-	 * anything not sized in absolute mode.
-	 */
+	/** Rendered width before this plugin touched the widget. */
 	private int originalWidthOf(Widget widget)
 	{
 		return savedSize(widget).renderedWidth;

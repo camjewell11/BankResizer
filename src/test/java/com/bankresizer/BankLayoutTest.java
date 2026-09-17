@@ -4,11 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import org.junit.Test;
 
-/**
- * These tests pin the layout maths to the behaviour of the game's own
- * [proc,bankmain_build] (script 277). If the client ever changes that script,
- * these are the assertions that should start failing.
- */
+/** Pins the layout maths to [proc,bankmain_build]; these fail first if it changes. */
 public class BankLayoutTest
 {
 	@Test
