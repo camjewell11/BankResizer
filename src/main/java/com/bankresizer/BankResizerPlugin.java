@@ -153,8 +153,6 @@ public class BankResizerPlugin extends Plugin
 
 	private int appliedCanvasWidth = -1;
 
-	private int appliedRows = -1;
-
 	@Provides
 	BankResizerConfig provideConfig(ConfigManager configManager)
 	{
@@ -164,7 +162,7 @@ public class BankResizerPlugin extends Plugin
 	@Override
 	protected void startUp() throws Exception
 	{
-		clientThread.invokeLater(() -> applyLayout(true));
+		clientThread.invokeLater(this::applyLayout);
 	}
 
 	@Override
@@ -182,17 +180,10 @@ public class BankResizerPlugin extends Plugin
 	{
 		// bankmain_build calls bankmain_finishbuilding as its final statement, so
 		// by the time this fires the vanilla layout and scroll size are settled.
-		if (event.getScriptId() == ScriptID.BANKMAIN_BUILD)
+		if (event.getScriptId() == ScriptID.BANKMAIN_BUILD
+			|| event.getScriptId() == ScriptID.BANKMAIN_SIZE_CHECK)
 		{
-			applyLayout(true);
-		}
-		else if (event.getScriptId() == ScriptID.BANKMAIN_SIZE_CHECK)
-		{
-			// Width only. bankmain_size_check recomputes the bank window's height
-			// every tick while the bank is open, so re-asserting a row count here
-			// just fights the client: we set the height, it sets it back, both
-			// every frame.
-			applyLayout(false);
+			applyLayout();
 		}
 	}
 
@@ -204,7 +195,7 @@ public class BankResizerPlugin extends Plugin
 			return;
 		}
 
-		clientThread.invokeLater(() -> applyLayout(true));
+		clientThread.invokeLater(this::applyLayout);
 	}
 
 	@Subscribe
@@ -234,7 +225,7 @@ public class BankResizerPlugin extends Plugin
 	 * already drawn that layout correctly, so the plugin stays invisible until
 	 * the user actually asks for more columns.
 	 */
-	private void applyLayout(boolean applyHeight)
+	private void applyLayout()
 	{
 		Widget items = client.getWidget(InterfaceID.Bankmain.ITEMS);
 		if (items == null || items.isHidden())
@@ -247,7 +238,7 @@ public class BankResizerPlugin extends Plugin
 		// Vanilla width and vanilla height together mean there is nothing to do.
 		// A row count on its own still has to be applied, so it cannot short
 		// circuit here just because the width is unchanged.
-		if (columns == BankLayout.VANILLA_COLUMNS && config.rows() <= 0)
+		if (columns == BankLayout.VANILLA_COLUMNS)
 		{
 			// Only undo our own work if there is any, then leave the bank alone.
 			if (modified)
@@ -279,11 +270,6 @@ public class BankResizerPlugin extends Plugin
 		}
 
 		resizeChrome(delta);
-		if (applyHeight)
-		{
-			applyRows();
-		}
-
 		setWidth(items, targetWidth);
 		layoutItems(items, columns, targetWidth);
 
@@ -296,7 +282,6 @@ public class BankResizerPlugin extends Plugin
 		modified = true;
 		appliedColumns = columns;
 		appliedCanvasWidth = canvasWidth;
-		appliedRows = config.rows();
 	}
 
 	/**
@@ -316,51 +301,7 @@ public class BankResizerPlugin extends Plugin
 		return modified
 			&& columns == appliedColumns
 			&& canvasWidth == appliedCanvasWidth
-			&& config.rows() == appliedRows
 			&& items.getOriginalWidth() == targetWidth;
-	}
-
-	/**
-	 * Sets the bank window's height from the configured row count.
-	 *
-	 * At 0 rows the height is left as the game set it, so the bank keeps filling
-	 * the available space by itself. Any other value pins the window, and is
-	 * capped at what fits in the play area so the lower chrome cannot end up
-	 * behind the chatbox.
-	 */
-	private void applyRows()
-	{
-		int rows = config.rows();
-		if (rows <= 0)
-		{
-			return;
-		}
-
-		Widget window = client.getWidget(InterfaceID.Bankmain.UNIVERSE);
-		if (window == null)
-		{
-			return;
-		}
-
-		int playAreaHeight = BankRoom.measure(window, client.getCanvasWidth()).getHeightLimit();
-		if (playAreaHeight <= 0)
-		{
-			return;
-		}
-
-		int capped = Math.min(rows, BankLayout.maxRowsFor(playAreaHeight - EDGE_MARGIN));
-		if (capped <= 0)
-		{
-			return;
-		}
-
-		savedSize(window);
-		window.setHeightMode(WidgetSizeMode.ABSOLUTE);
-		window.setOriginalHeight(BankLayout.windowHeightFor(capped));
-		window.revalidate();
-
-		log.debug("Bank height set to {} rows ({}px), play area {}px",
-			capped, BankLayout.windowHeightFor(capped), playAreaHeight);
 	}
 
 	/** Restores every widened widget and puts the grid back to vanilla columns. */
@@ -459,6 +400,7 @@ public class BankResizerPlugin extends Plugin
 		log.debug("--- bank geometry [{}] canvas {}x{}",
 			phase, client.getCanvasWidth(), client.getCanvasHeight());
 		logParentChain();
+		logBankChildren();
 		logWidget("UNIVERSE", InterfaceID.Bankmain.UNIVERSE);
 		logWidget("FRAME", InterfaceID.Bankmain.FRAME);
 		logWidget("ITEMS_CONTAINER", InterfaceID.Bankmain.ITEMS_CONTAINER);
@@ -500,6 +442,62 @@ public class BankResizerPlugin extends Plugin
 				node.getCanvasLocation() == null ? -1 : node.getCanvasLocation().getX(),
 				node.getWidthMode(),
 				node.getXPositionMode());
+		}
+	}
+
+	/**
+	 * Dumps the bank's own buttons and panels.
+	 *
+	 * The chrome is what decides whether a widened bank is usable. A child pinned
+	 * to the left edge keeps its position when the window grows, which is fine for
+	 * something on the left and wrong for anything that belongs near the right,
+	 * so this prints each one's position mode alongside its bounds.
+	 */
+	private void logBankChildren()
+	{
+		Widget window = client.getWidget(InterfaceID.Bankmain.UNIVERSE);
+		if (window == null)
+		{
+			return;
+		}
+
+		logChildrenOf("window", window);
+
+		Widget bottom = client.getWidget(InterfaceID.Bankmain.BOTTOM);
+		if (bottom != null)
+		{
+			logChildrenOf("bottom", bottom);
+		}
+	}
+
+	private void logChildrenOf(String label, Widget parent)
+	{
+		Widget[] children = parent.getStaticChildren();
+		if (children == null)
+		{
+			log.debug("  {}: no static children", label);
+			return;
+		}
+
+		log.debug("  {} has {} children, parent w={}", label, children.length, parent.getWidth());
+		for (Widget child : children)
+		{
+			if (child == null || child.isSelfHidden())
+			{
+				continue;
+			}
+
+			log.debug("    {}[{}]: w={} h={} x={} y={} wMode={} xMode={} type={} text={}",
+				label,
+				child.getId() & 0xFFFF,
+				child.getWidth(),
+				child.getHeight(),
+				child.getRelativeX(),
+				child.getRelativeY(),
+				child.getWidthMode(),
+				child.getXPositionMode(),
+				child.getType(),
+				child.getText() == null ? "" : child.getText());
 		}
 	}
 
@@ -741,7 +739,6 @@ public class BankResizerPlugin extends Plugin
 		loggedGeometry = false;
 		appliedColumns = -1;
 		appliedCanvasWidth = -1;
-		appliedRows = -1;
 	}
 
 	/** Size the widget had before this plugin first touched it, captured once. */

@@ -67,31 +67,6 @@ final class BankLayout
 	/** Slack the game adds to a non-empty scroll height. */
 	static final int SCROLL_PADDING = 8;
 
-	/**
-	 * Vertical space in the bank window that is not item grid: the title bar, the
-	 * tab strip and the button row along the bottom.
-	 *
-	 * From [proc,bankmain_build], which sizes the item container as
-	 * {@code if_setsize(460, 81, ^setsize_abs, ^setsize_minus, ...)}, so the grid
-	 * gets the window height less 81.
-	 */
-	static final int VERTICAL_CHROME = 81;
-
-	/** Height the bank window needs to show {@code rows} rows of items. */
-	static int windowHeightFor(int rows)
-	{
-		return rows * ROW_PITCH + VERTICAL_CHROME;
-	}
-
-	/**
-	 * Most rows that fit in {@code availableHeight} pixels of window. Returns 0
-	 * when there is not even room for one, so callers can fall back rather than
-	 * apply a negative height.
-	 */
-	static int maxRowsFor(int availableHeight)
-	{
-		return Math.max(0, (availableHeight - VERTICAL_CHROME) / ROW_PITCH);
-	}
 
 	private BankLayout()
 	{

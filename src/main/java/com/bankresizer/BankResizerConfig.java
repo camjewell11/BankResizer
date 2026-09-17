@@ -54,22 +54,4 @@ public interface BankResizerConfig extends Config
 		// changes nothing until the user asks for it.
 		return BankLayout.VANILLA_COLUMNS;
 	}
-
-	@Range(
-		min = 0,
-		max = 20
-	)
-	@ConfigItem(
-		keyName = "rows",
-		name = "Rows",
-		description = "Rows of items to show. 0 fills the available height, which is what the game does."
-			+ " Capped at whatever fits above the chatbox.",
-		position = 2
-	)
-	default int rows()
-	{
-		// 0 leaves the height alone, so the bank keeps growing with the window
-		// exactly as it does without this plugin.
-		return 0;
-	}
 }

@@ -179,58 +179,6 @@ public class BankLayoutTest
 	}
 
 	@Test
-	public void vanillaWindowHeightMatchesTheLiveClient()
-	{
-		// The bank window measures 547 on a live client, and the game sizes the
-		// item grid as the window height less 81. That leaves room for 12 rows,
-		// which is what the unmodified bank shows.
-		assertEquals(12, BankLayout.maxRowsFor(547));
-	}
-
-	@Test
-	public void rowsAndHeightRoundTrip()
-	{
-		for (int rows = 1; rows <= 20; rows++)
-		{
-			int height = BankLayout.windowHeightFor(rows);
-			assertEquals("rows=" + rows, rows, BankLayout.maxRowsFor(height));
-		}
-	}
-
-	@Test
-	public void eachRowCostsOnePitch()
-	{
-		assertEquals(BankLayout.ROW_PITCH,
-			BankLayout.windowHeightFor(9) - BankLayout.windowHeightFor(8));
-	}
-
-	@Test
-	public void maxRowsIsNeverNegative()
-	{
-		// A play area shorter than the bank's own chrome must clamp to zero rather
-		// than return a negative that would produce an inverted window height.
-		assertEquals(0, BankLayout.maxRowsFor(0));
-		assertEquals(0, BankLayout.maxRowsFor(BankLayout.VERTICAL_CHROME));
-		assertEquals(0, BankLayout.maxRowsFor(-500));
-	}
-
-	@Test
-	public void rowsFitInsideThePlayArea()
-	{
-		// The property that matters for the chatbox overlap: whatever row count we
-		// allow, the resulting window must fit the space we measured.
-		for (int available = 0; available <= 800; available += 10)
-		{
-			int rows = BankLayout.maxRowsFor(available);
-			if (rows > 0)
-			{
-				assertTrue("overflows at available=" + available,
-					BankLayout.windowHeightFor(rows) <= available);
-			}
-		}
-	}
-
-	@Test
 	public void emptyGridHasNoScroll()
 	{
 		assertEquals(0, BankLayout.scrollHeightFor(0));
