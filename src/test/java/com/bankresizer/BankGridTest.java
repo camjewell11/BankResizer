@@ -13,11 +13,11 @@ import org.junit.Test;
 public class BankGridTest
 {
 
-	private static int[] widthsOf(int n)
+	private static int[] itemIdsOf(int n)
 	{
-		int[] widths = new int[n];
-		java.util.Arrays.fill(widths, BankLayout.ITEM_WIDTH);
-		return widths;
+		int[] ids = new int[n];
+		java.util.Arrays.fill(ids, 995);
+		return ids;
 	}
 
 	private static int[] heightsOf(int n)
@@ -47,7 +47,7 @@ public class BankGridTest
 		BankGrid.Plan plan = BankGrid.plan(
 			new int[]{51, 51},
 			new int[]{804, 0},
-			new int[]{36, 36},
+			new int[]{995, 995},
 			new int[]{32, 32},
 			8);
 
@@ -63,7 +63,7 @@ public class BankGridTest
 		BankGrid.Plan plan = BankGrid.plan(
 			new int[]{99, 51},
 			new int[]{0, 0},
-			new int[]{36, 36},
+			new int[]{995, 995},
 			new int[]{32, 32},
 			8);
 
@@ -81,7 +81,7 @@ public class BankGridTest
 			xs[i] = i * 48;
 		}
 
-		BankGrid.Plan plan = BankGrid.plan(xs, ys, widthsOf(10), heightsOf(10), 8);
+		BankGrid.Plan plan = BankGrid.plan(xs, ys, itemIdsOf(10), heightsOf(10), 8);
 
 		assertEquals(0, cellFor(plan, 7).getY());
 		assertEquals(BankLayout.ROW_PITCH, cellFor(plan, 8).getY());
@@ -97,7 +97,7 @@ public class BankGridTest
 		BankGrid.Plan plan = BankGrid.plan(
 			new int[]{51, 51, 51},
 			new int[]{0, 804, 797},
-			new int[]{36, 36, 374},
+			new int[]{995, 995, -1},
 			new int[]{32, 32, 2},
 			8);
 
@@ -115,7 +115,7 @@ public class BankGridTest
 		BankGrid.Plan plan = BankGrid.plan(
 			new int[]{51, 99, 147, 51},
 			new int[]{0, 0, 0, 10},
-			new int[]{36, 36, 36, 374},
+			new int[]{995, 995, 995, -1},
 			new int[]{32, 32, 32, 2},
 			8);
 
@@ -129,7 +129,7 @@ public class BankGridTest
 		BankGrid.Plan plan = BankGrid.plan(
 			new int[]{51, 51},
 			new int[]{0, 900},
-			new int[]{36, 374},
+			new int[]{995, -1},
 			new int[]{32, 2},
 			8);
 
@@ -166,8 +166,8 @@ public class BankGridTest
 			ys[i] = (i / 8) * 36;
 		}
 
-		assertTrue(BankGrid.plan(xs, ys, widthsOf(20), heightsOf(20), 12).getHeight()
-			< BankGrid.plan(xs, ys, widthsOf(20), heightsOf(20), 8).getHeight());
+		assertTrue(BankGrid.plan(xs, ys, itemIdsOf(20), heightsOf(20), 12).getHeight()
+			< BankGrid.plan(xs, ys, itemIdsOf(20), heightsOf(20), 8).getHeight());
 	}
 
 	@Test
@@ -179,7 +179,7 @@ public class BankGridTest
 		BankGrid.Plan plan = BankGrid.plan(
 			new int[]{51, 51, 51},
 			new int[]{756, 804, 797},
-			new int[]{36, 36, 374},
+			new int[]{995, 995, -1},
 			new int[]{32, 32, 2},
 			8);
 
@@ -199,7 +199,7 @@ public class BankGridTest
 		BankGrid.Plan plan = BankGrid.plan(
 			new int[]{51, 51, 51, 51},
 			new int[]{756, 804, 797, 799},
-			new int[]{36, 36, 374, 374},
+			new int[]{995, 995, -1, -1},
 			new int[]{32, 32, 2, 2},
 			8);
 
@@ -216,7 +216,7 @@ public class BankGridTest
 		BankGrid.Plan plan = BankGrid.plan(
 			new int[]{51, 51},
 			new int[]{0, BankLayout.ROW_PITCH},
-			new int[]{36, 36},
+			new int[]{995, 995},
 			new int[]{32, 32},
 			1);
 
@@ -232,7 +232,7 @@ public class BankGridTest
 		BankGrid.Plan plan = BankGrid.plan(
 			new int[]{51, 99, 147, 195},
 			new int[]{0, 0, 0, 4},
-			new int[]{36, 36, 36, 228},
+			new int[]{995, 995, 995, -1},
 			new int[]{32, 32, 32, 32},
 			8);
 
@@ -252,7 +252,7 @@ public class BankGridTest
 		BankGrid.Plan plan = BankGrid.plan(
 			new int[]{51, 99, 147, 195},
 			new int[]{0, 0, 0, 4},
-			new int[]{36, 36, 36, 228},
+			new int[]{995, 995, 995, -1},
 			new int[]{32, 32, 32, 32},
 			3);
 
@@ -260,12 +260,15 @@ public class BankGridTest
 	}
 
 	@Test
-	public void widthTellsAnItemFromAFiller()
+	public void itemIdTellsAnItemFromAFiller()
 	{
-		assertEquals(BankGrid.Kind.ITEM, BankGrid.kindOf(36, 32));
-		assertEquals(BankGrid.Kind.FILLER, BankGrid.kindOf(84, 32));
-		assertEquals(BankGrid.Kind.FILLER, BankGrid.kindOf(324, 32));
-		assertEquals(BankGrid.Kind.RULE, BankGrid.kindOf(374, 2));
+		assertEquals(BankGrid.Kind.ITEM, BankGrid.kindOf(995, 32));
+		assertEquals(BankGrid.Kind.FILLER, BankGrid.kindOf(BankGrid.NO_ITEM, 32));
+		assertEquals(BankGrid.Kind.RULE, BankGrid.kindOf(BankGrid.NO_ITEM, 2));
+
+		// A filler covering one cell is resized to exactly an item's width, so a
+		// width test would promote it to an item on the next pass.
+		assertEquals(BankGrid.Kind.FILLER, BankGrid.kindOf(BankGrid.NO_ITEM, 32));
 	}
 
 	@Test
@@ -273,7 +276,7 @@ public class BankGridTest
 	{
 		assertEquals(0, BankGrid.plan(new int[0], new int[0], new int[0], new int[0], 8).getHeight());
 		assertEquals(0, BankGrid.plan(null, null, null, null, 8).getHeight());
-		assertEquals(0, BankGrid.plan(new int[]{1}, new int[]{1, 2}, new int[]{36},
+		assertEquals(0, BankGrid.plan(new int[]{1}, new int[]{1, 2}, new int[]{995},
 			new int[]{32}, 8).getHeight());
 	}
 
@@ -283,7 +286,7 @@ public class BankGridTest
 		BankGrid.Plan plan = BankGrid.plan(
 			new int[]{51, 99},
 			new int[]{0, 0},
-			new int[]{36, 36},
+			new int[]{995, 995},
 			new int[]{32, 32},
 			0);
 

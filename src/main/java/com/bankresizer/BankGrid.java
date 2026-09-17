@@ -140,25 +140,35 @@ final class BankGrid
 		}
 	}
 
-	/** What a child of the given size is. */
-	static Kind kindOf(int width, int height)
+	/**
+	 * What a child carrying {@code itemId} and standing {@code height} tall is.
+	 *
+	 * Item id rather than width, because this plugin resizes the fillers itself: a
+	 * filler covering a single cell comes out 36 wide, exactly an item's width, so
+	 * a width test would promote it to an item on the following pass. Only rules
+	 * and fillers carry no item; a vanilla empty slot holds a placeholder.
+	 */
+	static Kind kindOf(int itemId, int height)
 	{
 		if (height < BankLayout.ITEM_HEIGHT)
 		{
 			return Kind.RULE;
 		}
 
-		return width == BankLayout.ITEM_WIDTH ? Kind.ITEM : Kind.FILLER;
+		return itemId == NO_ITEM ? Kind.FILLER : Kind.ITEM;
 	}
+
+	/** Item id of a child that holds no item. */
+	static final int NO_ITEM = -1;
 
 	/**
 	 * Plans a grid {@code columns} wide from the positions and sizes the children
 	 * already hold.
 	 */
-	static Plan plan(int[] xs, int[] ys, int[] widths, int[] heights, int columns)
+	static Plan plan(int[] xs, int[] ys, int[] itemIds, int[] heights, int columns)
 	{
-		if (xs == null || ys == null || widths == null || heights == null
-			|| xs.length != ys.length || xs.length != widths.length
+		if (xs == null || ys == null || itemIds == null || heights == null
+			|| xs.length != ys.length || xs.length != itemIds.length
 			|| xs.length != heights.length)
 		{
 			return new Plan(new ArrayList<>(), 0);
@@ -170,7 +180,7 @@ final class BankGrid
 		List<Integer> extras = new ArrayList<>();
 		for (int i = 0; i < xs.length; i++)
 		{
-			if (kindOf(widths[i], heights[i]) == Kind.ITEM)
+			if (kindOf(itemIds[i], heights[i]) == Kind.ITEM)
 			{
 				items.add(i);
 			}
@@ -204,7 +214,7 @@ final class BankGrid
 
 			if (!pending.isEmpty())
 			{
-				column = flush(cells, pending, xs, ys, widths, heights, y, column, width,
+				column = flush(cells, pending, xs, ys, itemIds, heights, y, column, width,
 					lastRowY != Integer.MIN_VALUE);
 
 				if (column > 0)
@@ -255,7 +265,7 @@ final class BankGrid
 
 		if (!pending.isEmpty())
 		{
-			column = flush(cells, pending, xs, ys, widths, heights, y, column, width,
+			column = flush(cells, pending, xs, ys, itemIds, heights, y, column, width,
 				lastRowY != Integer.MIN_VALUE);
 
 			if (column > 0)
@@ -289,7 +299,7 @@ final class BankGrid
 	 * row in progress, and drops them from the list so only rules are left.
 	 */
 	private static int flush(List<Cell> cells, List<Integer> pending, int[] xs, int[] ys,
-		int[] widths, int[] heights, int y, int column, int width, boolean anyPlaced)
+		int[] itemIds, int[] heights, int y, int column, int width, boolean anyPlaced)
 	{
 		// A row that came out exactly full has already wrapped the column back to
 		// zero, which otherwise looks the same as the start of a fresh row. Once
@@ -300,7 +310,7 @@ final class BankGrid
 		for (Iterator<Integer> it = pending.iterator(); it.hasNext(); )
 		{
 			int extra = it.next();
-			if (kindOf(widths[extra], heights[extra]) != Kind.FILLER)
+			if (kindOf(itemIds[extra], heights[extra]) != Kind.FILLER)
 			{
 				continue;
 			}

@@ -1079,7 +1079,7 @@ public class BankResizerPlugin extends Plugin
 		int count = visible.size();
 		int[] xs = new int[count];
 		int[] ys = new int[count];
-		int[] widths = new int[count];
+		int[] itemIds = new int[count];
 		int[] heights = new int[count];
 
 		for (int i = 0; i < count; i++)
@@ -1087,11 +1087,15 @@ public class BankResizerPlugin extends Plugin
 			Widget child = visible.get(i);
 			xs[i] = child.getOriginalX();
 			ys[i] = child.getOriginalY();
-			widths[i] = savedSize(child).originalWidth;
+
+			// Read straight off the widget. savedSize caches by widget id, and every
+			// dynamic child of the container shares its parent's id, so all 1438 of
+			// them resolved to one cached entry and were classified alike.
+			itemIds[i] = child.getItemId();
 			heights[i] = child.getOriginalHeight();
 		}
 
-		BankGrid.Plan plan = BankGrid.plan(xs, ys, widths, heights, columns);
+		BankGrid.Plan plan = BankGrid.plan(xs, ys, itemIds, heights, columns);
 		int padding = BankLayout.paddingFor(containerWidth, columns);
 
 		// The game's own separator width, 374 at the stock container width.
