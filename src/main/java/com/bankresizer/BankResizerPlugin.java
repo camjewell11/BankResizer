@@ -121,11 +121,17 @@ public class BankResizerPlugin extends Plugin
 
 		private final int renderedWidth;
 
+		private final int originalHeight;
+
+		private final int heightMode;
+
 		private WidgetSize(Widget widget)
 		{
 			this.originalWidth = widget.getOriginalWidth();
 			this.widthMode = widget.getWidthMode();
 			this.renderedWidth = widget.getWidth();
+			this.originalHeight = widget.getOriginalHeight();
+			this.heightMode = widget.getHeightMode();
 		}
 	}
 
@@ -143,6 +149,8 @@ public class BankResizerPlugin extends Plugin
 	private int appliedColumns = -1;
 
 	private int appliedCanvasWidth = -1;
+
+	private int appliedRows = -1;
 
 	@Provides
 	BankResizerConfig provideConfig(ConfigManager configManager)
@@ -225,7 +233,11 @@ public class BankResizerPlugin extends Plugin
 		}
 
 		int columns = resolveColumns();
-		if (columns == BankLayout.VANILLA_COLUMNS)
+
+		// Vanilla width and vanilla height together mean there is nothing to do.
+		// A row count on its own still has to be applied, so it cannot short
+		// circuit here just because the width is unchanged.
+		if (columns == BankLayout.VANILLA_COLUMNS && config.rows() <= 0)
 		{
 			// Only undo our own work if there is any, then leave the bank alone.
 			if (modified)
@@ -257,6 +269,7 @@ public class BankResizerPlugin extends Plugin
 		}
 
 		resizeChrome(delta);
+		applyRows();
 		setWidth(items, targetWidth);
 		layoutItems(items, columns, targetWidth);
 
@@ -269,6 +282,7 @@ public class BankResizerPlugin extends Plugin
 		modified = true;
 		appliedColumns = columns;
 		appliedCanvasWidth = canvasWidth;
+		appliedRows = config.rows();
 	}
 
 	/**
@@ -288,7 +302,51 @@ public class BankResizerPlugin extends Plugin
 		return modified
 			&& columns == appliedColumns
 			&& canvasWidth == appliedCanvasWidth
+			&& config.rows() == appliedRows
 			&& items.getOriginalWidth() == targetWidth;
+	}
+
+	/**
+	 * Sets the bank window's height from the configured row count.
+	 *
+	 * At 0 rows the height is left as the game set it, so the bank keeps filling
+	 * the available space by itself. Any other value pins the window, and is
+	 * capped at what fits in the play area so the lower chrome cannot end up
+	 * behind the chatbox.
+	 */
+	private void applyRows()
+	{
+		int rows = config.rows();
+		if (rows <= 0)
+		{
+			return;
+		}
+
+		Widget window = client.getWidget(InterfaceID.Bankmain.UNIVERSE);
+		if (window == null)
+		{
+			return;
+		}
+
+		int playAreaHeight = BankRoom.measure(window, client.getCanvasWidth()).getHeightLimit();
+		if (playAreaHeight <= 0)
+		{
+			return;
+		}
+
+		int capped = Math.min(rows, BankLayout.maxRowsFor(playAreaHeight - EDGE_MARGIN));
+		if (capped <= 0)
+		{
+			return;
+		}
+
+		savedSize(window);
+		window.setHeightMode(WidgetSizeMode.ABSOLUTE);
+		window.setOriginalHeight(BankLayout.windowHeightFor(capped));
+		window.revalidate();
+
+		log.debug("Bank height set to {} rows ({}px), play area {}px",
+			capped, BankLayout.windowHeightFor(capped), playAreaHeight);
 	}
 
 	/** Restores every widened widget and puts the grid back to vanilla columns. */
@@ -468,7 +526,10 @@ public class BankResizerPlugin extends Plugin
 		// called on. Resizing bottom up left the ancestors between the slot and the
 		// window still laid out against the old width.
 		Widget root = client.getWidget(InterfaceID.Bankmain.UNIVERSE);
-		List<Widget> chain = BankRoom.measure(root, client.getCanvasWidth()).getChain();
+		BankRoom room = BankRoom.measure(root, client.getCanvasWidth());
+		List<Widget> chain = room.getChain();
+		int playAreaHeight = room.getHeightLimit();
+
 		for (int i = chain.size() - 1; i >= 0; i--)
 		{
 			Widget node = chain.get(i);
@@ -478,15 +539,31 @@ public class BankResizerPlugin extends Plugin
 			{
 				node.setWidthMode(size.widthMode);
 				node.setOriginalWidth(size.originalWidth);
+				node.setHeightMode(size.heightMode);
+				node.setOriginalHeight(size.originalHeight);
+				node.revalidate();
+				continue;
 			}
-			else
+
+			// Set the width outright rather than letting the client derive it. The
+			// interface root is handed its size when the interface opens into its
+			// slot; its stored inset is 0, so revalidate() resolves it against the
+			// screen instead and stretches it to the full canvas.
+			node.setWidthMode(WidgetSizeMode.ABSOLUTE);
+			node.setOriginalWidth(size.renderedWidth + delta);
+
+			// Same problem vertically, and worse: revalidating the interface root
+			// grew it from the play area's 550 to the full 715 canvas, so the bank
+			// sat in a container 165px too tall and its lower chrome was pushed
+			// down behind the chatbox. Pin the ancestors to the play area, which is
+			// measured live so it still tracks a resized client.
+			//
+			// The bank window itself is left alone here. Its height is either the
+			// game's own or the configured row count, handled by the caller.
+			if (i > 0 && playAreaHeight > 0)
 			{
-				// Set the width outright rather than letting the client derive it.
-				// The interface root is handed its size when the interface opens
-				// into its slot; its stored inset is 0, so revalidate() resolves it
-				// against the screen instead and stretches it to the full canvas.
-				node.setWidthMode(WidgetSizeMode.ABSOLUTE);
-				node.setOriginalWidth(size.renderedWidth + delta);
+				node.setHeightMode(WidgetSizeMode.ABSOLUTE);
+				node.setOriginalHeight(playAreaHeight);
 			}
 
 			node.revalidate();
@@ -632,6 +709,7 @@ public class BankResizerPlugin extends Plugin
 		loggedGeometry = false;
 		appliedColumns = -1;
 		appliedCanvasWidth = -1;
+		appliedRows = -1;
 	}
 
 	/** Size the widget had before this plugin first touched it, captured once. */

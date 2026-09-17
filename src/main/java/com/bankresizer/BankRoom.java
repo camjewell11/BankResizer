@@ -19,6 +19,7 @@ package com.bankresizer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import javax.annotation.Nullable;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetSizeMode;
 
@@ -58,14 +59,38 @@ final class BankRoom
 	 */
 	private final List<Widget> chain;
 
+	/**
+	 * The play area the bank sits in: the first ancestor above the slots, which
+	 * keeps its own size rather than being widened.
+	 *
+	 * Measured live at 725 by 550 on a 940 by 715 canvas, which is the canvas less
+	 * 215 pixels of side panel and 165 of chatbox. Bounding both axes by this
+	 * widget is what keeps a resized bank from running under the chatbox or out
+	 * across the inventory.
+	 */
+	private final Widget viewport;
+
 	/** Widest the bank window may become before an ancestor would clip it. */
 	private final int limit;
 
-	private BankRoom(List<Widget> slots, List<Widget> chain, int limit)
+	private BankRoom(List<Widget> slots, List<Widget> chain, Widget viewport, int limit)
 	{
 		this.slots = slots;
 		this.chain = chain;
+		this.viewport = viewport;
 		this.limit = limit;
+	}
+
+	@Nullable
+	Widget getViewport()
+	{
+		return viewport;
+	}
+
+	/** Tallest the bank window may become, or 0 if the play area is unknown. */
+	int getHeightLimit()
+	{
+		return viewport == null ? 0 : viewport.getHeight();
 	}
 
 	List<Widget> getSlots()
@@ -93,7 +118,7 @@ final class BankRoom
 	{
 		if (window == null || canvasWidth <= 0)
 		{
-			return new BankRoom(Collections.emptyList(), Collections.emptyList(), 0);
+			return new BankRoom(Collections.emptyList(), Collections.emptyList(), null, 0);
 		}
 
 		List<Widget> chain = new ArrayList<>();
@@ -128,21 +153,28 @@ final class BankRoom
 		}
 
 		// Only tracking ancestors above the topmost slot constrain us. Ones below
-		// it sit inside something we are widening, so they follow along.
+		// it sit inside something we are widening, so they follow along. The
+		// narrowest of them is the play area the bank has to stay inside.
+		Widget viewport = null;
 		int limit = Integer.MAX_VALUE;
 		for (int i = highestSlot + 1; i < end; i++)
 		{
-			limit = Math.min(limit, chain.get(i).getWidth());
+			Widget node = chain.get(i);
+			if (node.getWidth() < limit)
+			{
+				limit = node.getWidth();
+				viewport = node;
+			}
 		}
 
-		if (limit == Integer.MAX_VALUE)
+		if (viewport == null)
 		{
 			limit = window.getWidth();
 		}
 
 		// Stop at the topmost slot. Anything above it is a tracking ancestor that
 		// must keep its own size: that one is the limit, not something to widen.
-		return new BankRoom(slots, chain.subList(0, highestSlot + 1), limit);
+		return new BankRoom(slots, chain.subList(0, highestSlot + 1), viewport, limit);
 	}
 
 	/** Guards against a malformed tree sending the walk into a long loop. */

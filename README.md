@@ -12,8 +12,14 @@ changes only the width, and leaves item icons at their normal size.
 
 | Setting | Default | Effect |
 | --- | --- | --- |
-| Fit to window width | off | Use as many columns as the client window allows. Overrides the column count. |
+| Fit to window width | off | Use as many columns as the play area allows. Overrides the column count. |
 | Columns | 8 | Items per row. 8 is the unmodified game layout. |
+| Rows | 0 | Rows of items. 0 leaves the height alone, so the bank fills the space by itself. |
+
+Both axes are capped by the play area rather than the whole canvas. That area is
+the game viewport with the side panel and the chatbox excluded, measured from the
+widget tree rather than assumed, so a wider or taller bank never runs underneath
+the chatbox or out across the inventory.
 
 The plugin ships doing nothing. At 8 columns it touches no widget at all, because
 the game has already drawn that layout correctly, so installing it changes
