@@ -70,16 +70,19 @@ Requires JDK 11 or newer. The compile target is Java 11 to match the client.
 ./gradlew run        # launch a developer-mode client with the plugin loaded
 ```
 
-The geometry lives in `BankLayout`, isolated from the client API so it can be
-unit tested directly. Those tests pin the maths to the game script's behaviour,
-and are the thing that should fail first if Jagex ever changes the bank layout.
+The geometry lives in `BankLayout` and the ancestor rule in `BankChainPlan`, both
+isolated from the client API so they can be unit tested directly. Between them
+they pin the behaviour to the game script and to a chain measured on a live
+client, and are the thing that should fail first if Jagex changes the bank.
 
 ## Status
 
-The layout maths is verified by unit tests. Still unconfirmed against a running
-client: the set of chrome widgets that get widened, the chrome width used to cap
-the column count, and tab separator placement. Enable debug logging to get a dump
-of the real widget geometry on each layout pass.
+Width works, and the maths and ancestor rule are covered by tests. Open: some of
+the bank's own buttons are positioned at fixed offsets by the game's layout
+script, so they keep their place instead of tracking the right edge when the
+window grows. Tab separator placement is also approximate. Enable debug logging
+for a dump of the widget geometry and of every bank button with its position
+mode.
 
 ## Compliance
 

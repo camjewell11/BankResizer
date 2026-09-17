@@ -127,50 +127,30 @@ final class BankRoom
 			chain.add(node);
 		}
 
-		// Everything below the first full-canvas ancestor is in play. That root is
-		// the whole screen rather than a slot, and widening it would push the bank
-		// out over the side panel.
-		int end = chain.size();
+		// The rule itself lives in BankChainPlan so it can be unit tested without
+		// faking a widget tree.
+		int[] widths = new int[chain.size()];
+		int[] modes = new int[chain.size()];
 		for (int i = 0; i < chain.size(); i++)
 		{
-			Widget node = chain.get(i);
-			if (node.getWidthMode() == WidgetSizeMode.ABSOLUTE && node.getWidth() >= canvasWidth)
-			{
-				end = i;
-				break;
-			}
+			widths[i] = chain.get(i).getWidth();
+			modes[i] = chain.get(i).getWidthMode();
 		}
+
+		BankChainPlan plan = BankChainPlan.of(widths, modes, canvasWidth);
+		int highestSlot = plan.getHighestSlot();
 
 		List<Widget> slots = new ArrayList<>();
-		int highestSlot = -1;
-		for (int i = 0; i < end; i++)
+		for (int i = 0; i <= highestSlot; i++)
 		{
-			if (chain.get(i).getWidthMode() == WidgetSizeMode.ABSOLUTE)
+			if (modes[i] == WidgetSizeMode.ABSOLUTE)
 			{
 				slots.add(chain.get(i));
-				highestSlot = i;
 			}
 		}
 
-		// Only tracking ancestors above the topmost slot constrain us. Ones below
-		// it sit inside something we are widening, so they follow along. The
-		// narrowest of them is the play area the bank has to stay inside.
-		Widget viewport = null;
-		int limit = Integer.MAX_VALUE;
-		for (int i = highestSlot + 1; i < end; i++)
-		{
-			Widget node = chain.get(i);
-			if (node.getWidth() < limit)
-			{
-				limit = node.getWidth();
-				viewport = node;
-			}
-		}
-
-		if (viewport == null)
-		{
-			limit = window.getWidth();
-		}
+		Widget viewport = plan.getViewport() < 0 ? null : chain.get(plan.getViewport());
+		int limit = viewport == null ? window.getWidth() : viewport.getWidth();
 
 		// Stop at the topmost slot. Anything above it is a tracking ancestor that
 		// must keep its own size: that one is the limit, not something to widen.
