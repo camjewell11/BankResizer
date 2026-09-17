@@ -351,6 +351,7 @@ public class BankResizerPlugin extends Plugin
 		// the strip has already re-centred into it, so reading it afterwards
 		// captures the centred position and pins the strip right back where it was.
 		pinTabsLeft(delta);
+		pinPotionStore(delta);
 		resizeChrome(delta);
 		shiftBottomRow(delta);
 		setWidth(items, targetWidth);
@@ -440,6 +441,7 @@ public class BankResizerPlugin extends Plugin
 
 		resizeChrome(0);
 		pinTabsLeft(0);
+		pinPotionStore(0);
 		shiftBottomRow(0);
 		setWidth(items, BankLayout.VANILLA_CONTAINER_WIDTH);
 
@@ -823,6 +825,32 @@ public class BankResizerPlugin extends Plugin
 
 			setWidth(widget, originalWidthOf(widget) + delta);
 		}
+	}
+
+	/**
+	 * Keeps the potion store at its vanilla size inside the widened window.
+	 *
+	 * The store is its own container, not part of the bank's item grid, and its
+	 * contents are a two column list the game script places at fixed offsets. The
+	 * container is sized in MINUS mode, so widening the bank stretched it from 425
+	 * to 521 while the entries inside stayed where they were, leaving them adrift
+	 * in a box 96px too wide.
+	 *
+	 * In MINUS mode the stored value is an inset from the parent, so adding the
+	 * same delta to the inset cancels the parent's growth exactly and the store
+	 * renders as the unmodified client draws it.
+	 */
+	private void pinPotionStore(int delta)
+	{
+		Widget container = client.getWidget(InterfaceID.Bankmain.POTIONSTORE_CONTAINER);
+		if (container == null || container.getWidthMode() != WidgetSizeMode.MINUS)
+		{
+			return;
+		}
+
+		WidgetSize size = savedSize(container);
+		container.setOriginalWidth(size.originalWidth + delta);
+		container.revalidateScroll();
 	}
 
 	/**
