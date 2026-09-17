@@ -1040,11 +1040,18 @@ public class BankResizerPlugin extends Plugin
 	 * neighbour by 48px. At the vanilla 425 the two agree, which is why an
 	 * unmodified client never shows this.
 	 *
-	 * A column is taken from the entry's ordinal and never from where the entry
-	 * currently sits. The store's widgets outlive the bank closing, so on a reopen
-	 * some entries still hold the positions set here while the script has relaid
-	 * others; reading a column from those positions saw a third column and threw
-	 * entries off the side, losing the right hand column's favourite heart.
+	 * A column comes from the entry's place within its row, where a row is the
+	 * entries sharing a y. Two earlier attempts took it from something less solid.
+	 * Reading it from the entry's current x is circular, because that is what this
+	 * method sets, and the store's widgets outlive the bank closing, so a reopen
+	 * mixed positions the script had set with positions set here. Counting entries
+	 * instead assumed the columns alternate all the way down, but each section
+	 * starts its grid again, so a section with an odd number of entries flipped
+	 * every row after it and put both entries of a row in the same column, one
+	 * hidden behind the other.
+	 *
+	 * The y of an entry is never changed here, which is what makes it safe to
+	 * group by.
 	 */
 	private void spreadPotionEntries()
 	{
@@ -1078,7 +1085,36 @@ public class BankResizerPlugin extends Plugin
 			return;
 		}
 
-		int furthest = furthestOffsetInAnEntry(children, entryWidth);
+		// Each entry as {first child, one past its last child, x, y}.
+		List<int[]> entries = new ArrayList<>();
+		for (int i = 0; i < children.length; i++)
+		{
+			Widget child = children[i];
+			if (child == null || child.isSelfHidden()
+				|| child.getOriginalHeight() > BankLayout.ROW_PITCH)
+			{
+				continue;
+			}
+
+			if (child.getType() == WidgetType.GRAPHIC
+				&& child.getOriginalWidth() == entryWidth)
+			{
+				if (!entries.isEmpty())
+				{
+					entries.get(entries.size() - 1)[1] = i;
+				}
+
+				entries.add(new int[]{i, children.length, child.getOriginalX(),
+					child.getOriginalY()});
+			}
+		}
+
+		if (entries.size() < 2)
+		{
+			return;
+		}
+
+		int furthest = furthestOffsetInAnEntry(children, entries);
 
 		// The favourite heart sits furthest right in an entry and the game holds it
 		// against that edge, so it keeps its distance from the right rather than
@@ -1088,67 +1124,62 @@ public class BankResizerPlugin extends Plugin
 			potionHeartInset = entryWidth - furthest;
 		}
 
-		int entry = -1;
-		int base = 0;
+		// Reading order within a row, so the leftmost entry of each row is its
+		// first column however the entries are currently placed.
+		List<int[]> byRow = new ArrayList<>(entries);
+		byRow.sort((a, b) -> a[3] != b[3]
+			? Integer.compare(a[3], b[3])
+			: a[2] != b[2] ? Integer.compare(a[2], b[2]) : Integer.compare(a[0], b[0]));
+
 		int column = 0;
+		int row = Integer.MIN_VALUE;
 
-		for (Widget child : children)
+		for (int[] entry : byRow)
 		{
-			if (child == null || child.isSelfHidden()
-				|| child.getOriginalHeight() > BankLayout.ROW_PITCH)
-			{
-				continue;
-			}
+			column = entry[3] == row ? column + 1 : 0;
+			row = entry[3];
 
-			if (child.getType() == WidgetType.GRAPHIC
-				&& child.getOriginalWidth() == entryWidth)
+			int base = column * entryWidth;
+			for (int i = entry[0]; i < entry[1]; i++)
 			{
-				entry++;
-				base = child.getOriginalX();
-				column = (entry % 2) * entryWidth;
-			}
+				Widget child = children[i];
+				if (child == null || child.isSelfHidden()
+					|| child.getOriginalHeight() > BankLayout.ROW_PITCH)
+				{
+					continue;
+				}
 
-			if (entry < 0)
-			{
-				continue;
-			}
+				int offset = child.getOriginalX() - entry[2];
+				int moved = potionHeartInset >= 0 && offset >= furthest
+					? base + entryWidth - potionHeartInset
+					: base + offset;
 
-			int offset = child.getOriginalX() - base;
-			int moved = potionHeartInset >= 0 && offset >= furthest
-				? column + entryWidth - potionHeartInset
-				: column + offset;
-
-			if (moved != child.getOriginalX())
-			{
-				child.setOriginalX(moved);
-				child.revalidate();
+				if (moved != child.getOriginalX())
+				{
+					child.setOriginalX(moved);
+					child.revalidate();
+				}
 			}
 		}
 	}
 
 	/** How far right of its entry's start the furthest part of any entry sits. */
-	private int furthestOffsetInAnEntry(Widget[] children, int entryWidth)
+	private int furthestOffsetInAnEntry(Widget[] children, List<int[]> entries)
 	{
 		int furthest = 0;
-		int base = Integer.MIN_VALUE;
 
-		for (Widget child : children)
+		for (int[] entry : entries)
 		{
-			if (child == null || child.isSelfHidden()
-				|| child.getOriginalHeight() > BankLayout.ROW_PITCH)
+			for (int i = entry[0]; i < entry[1]; i++)
 			{
-				continue;
-			}
+				Widget child = children[i];
+				if (child == null || child.isSelfHidden()
+					|| child.getOriginalHeight() > BankLayout.ROW_PITCH)
+				{
+					continue;
+				}
 
-			if (child.getType() == WidgetType.GRAPHIC
-				&& child.getOriginalWidth() == entryWidth)
-			{
-				base = child.getOriginalX();
-			}
-
-			if (base != Integer.MIN_VALUE)
-			{
-				furthest = Math.max(furthest, child.getOriginalX() - base);
+				furthest = Math.max(furthest, child.getOriginalX() - entry[2]);
 			}
 		}
 
