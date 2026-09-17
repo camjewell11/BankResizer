@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
@@ -398,11 +399,15 @@ public class BankResizerPlugin extends Plugin
 			return true;
 		}
 
-		// A layout pads its empty slots out to 48x36 so that its grid has no gaps.
-		// The game itself only ever draws 36x32 cells, so anything otherwise sized
-		// is proof that something else has arranged this view. Inventory Setups is
-		// laid out this way while getActiveLayout() reports nothing, so the sizes
-		// are the more reliable signal of the two.
+		// A layout pads its empty slots out to exactly one cell plus one gap, 48x36,
+		// so that its grid closes up. Inventory Setups is drawn this way while
+		// getActiveLayout() reports nothing, so this size is the more reliable
+		// signal of the two.
+		//
+		// The test is that exact pair and not merely "not the game's 36x32", which
+		// was the first attempt. A plain bank evidently holds at least one visible
+		// cell of some other size, so the looser test fired on an ordinary tab and
+		// stopped the columns being applied at all.
 		Widget[] children = items.getDynamicChildren();
 		if (children == null)
 		{
@@ -411,15 +416,16 @@ public class BankResizerPlugin extends Plugin
 
 		for (Widget child : children)
 		{
-			if (child == null || child.isSelfHidden()
-				|| child.getOriginalHeight() < ITEM_CELL_HEIGHT)
+			if (child == null || child.isSelfHidden())
 			{
 				continue;
 			}
 
-			if (child.getOriginalHeight() != BankLayout.ITEM_HEIGHT
-				|| child.getOriginalWidth() != BankLayout.ITEM_WIDTH)
+			if (child.getOriginalWidth() == BankLayout.COLUMN_PITCH
+				&& child.getOriginalHeight() == BankLayout.ROW_PITCH)
 			{
+				log.debug("Padded {}x{} cell found; another plugin owns this view",
+					child.getOriginalWidth(), child.getOriginalHeight());
 				return true;
 			}
 		}
@@ -801,6 +807,11 @@ public class BankResizerPlugin extends Plugin
 		StringBuilder shorts = new StringBuilder();
 		StringBuilder first = new StringBuilder();
 
+		// Every distinct size, counted. Sampling only the first few cells is what
+		// let a stray size in a plain bank go unnoticed and trip the ownership
+		// check on an ordinary tab.
+		Map<String, Integer> sizes = new TreeMap<>();
+
 		for (int i = 0; i < children.length; i++)
 		{
 			Widget child = children[i];
@@ -816,6 +827,7 @@ public class BankResizerPlugin extends Plugin
 			}
 
 			visible++;
+			sizes.merge(child.getOriginalWidth() + "x" + child.getOriginalHeight(), 1, Integer::sum);
 
 			if (child.getOriginalHeight() < ITEM_CELL_HEIGHT)
 			{
@@ -834,6 +846,7 @@ public class BankResizerPlugin extends Plugin
 		log.debug("item container: {} children, {} visible, {} hidden", children.length, visible, hidden);
 		log.debug("  first visible:{}", first.length() == 0 ? " none" : first.toString());
 		log.debug("  shorter than an item cell:{}", shorts.length() == 0 ? " none" : shorts.toString());
+		log.debug("  cell sizes: {}", sizes);
 	}
 
 	/**
