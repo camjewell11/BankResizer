@@ -34,6 +34,7 @@ import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetPositionMode;
 import net.runelite.api.widgets.WidgetSizeMode;
+import net.runelite.api.widgets.WidgetType;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
@@ -369,6 +370,8 @@ public class BankResizerPlugin extends Plugin
 			logGeometry("after");
 			loggedGeometry = true;
 		}
+
+		spreadPotionEntries();
 
 		if (log.isDebugEnabled())
 		{
@@ -908,6 +911,102 @@ public class BankResizerPlugin extends Plugin
 
 			child.setOriginalX(size.originalX + delta);
 			child.revalidate();
+		}
+	}
+
+	/**
+	 * Spreads the potion store's entries to match the width they were given.
+	 *
+	 * The store is an overlay covering the item area, so its container has to span
+	 * the widened bank and cannot simply be held at its old size; doing that left a
+	 * strip down its left uncovered with the bank showing through.
+	 *
+	 * The game script sizes each entry from the container width but lays the two
+	 * columns out on a pitch fixed at the vanilla width. Measured live at a
+	 * container of 521: entries 252 wide at x=0 and x=204, so each overlapped its
+	 * neighbour by 48px. At the vanilla 425 the two agree exactly, which is why
+	 * this is never visible in an unmodified client.
+	 *
+	 * The pitch is taken from the entries themselves rather than assumed, so this
+	 * is a no-op when they already agree, and applying it twice changes nothing.
+	 */
+	private void spreadPotionEntries()
+	{
+		Widget items = client.getWidget(InterfaceID.Bankmain.POTIONSTORE_ITEMS);
+		if (items == null || items.isHidden())
+		{
+			return;
+		}
+
+		Widget[] children = items.getDynamicChildren();
+		if (children == null)
+		{
+			return;
+		}
+
+		// An entry is as wide as its backing graphic, the widest thing the script
+		// sizes from the container.
+		int entryWidth = 0;
+		for (Widget child : children)
+		{
+			if (child != null && !child.isSelfHidden() && child.getType() == WidgetType.GRAPHIC)
+			{
+				entryWidth = Math.max(entryWidth, child.getOriginalWidth());
+			}
+		}
+
+		if (entryWidth <= 0)
+		{
+			return;
+		}
+
+		// Where the script started each column. Only the backing graphics mark a
+		// column; the icon and the two text lines sit at offsets inside one.
+		List<Integer> bases = new ArrayList<>();
+		for (Widget child : children)
+		{
+			if (child == null || child.isSelfHidden()
+				|| child.getType() != WidgetType.GRAPHIC
+				|| child.getOriginalWidth() != entryWidth)
+			{
+				continue;
+			}
+
+			if (!bases.contains(child.getOriginalX()))
+			{
+				bases.add(child.getOriginalX());
+			}
+		}
+
+		if (bases.size() < 2)
+		{
+			return;
+		}
+
+		bases.sort(Integer::compare);
+
+		for (Widget child : children)
+		{
+			if (child == null || child.isSelfHidden())
+			{
+				continue;
+			}
+
+			int column = 0;
+			for (int i = 0; i < bases.size(); i++)
+			{
+				if (child.getOriginalX() >= bases.get(i))
+				{
+					column = i;
+				}
+			}
+
+			int moved = column * entryWidth + (child.getOriginalX() - bases.get(column));
+			if (moved != child.getOriginalX())
+			{
+				child.setOriginalX(moved);
+				child.revalidate();
+			}
 		}
 	}
 
