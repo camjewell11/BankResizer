@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.ScriptID;
@@ -41,6 +42,7 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.banktags.BankTagsService;
 
+@Slf4j
 @PluginDescriptor(
 	name = "Bank Resizer",
 	description = "Widen the bank interface to show more columns of items",
@@ -320,6 +322,10 @@ public class BankResizerPlugin extends Plugin
 		}
 
 		int delta = targetWidth - BankLayout.VANILLA_CONTAINER_WIDTH;
+
+		// The one line kept for support: it fires only when the plugin actually
+		// changes the bank, so a report says at once whether it was involved.
+		log.debug("Laying out bank at {} columns, container width {}", columns, targetWidth);
 
 		// Before resizeChrome, and it has to stay that way.
 		pinTabsLeft(delta);

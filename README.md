@@ -58,8 +58,14 @@ keeps working and stays where it belongs as the bank widens.
 ## Compatibility
 
 Tested alongside bank tags, bank tag layouts, Inventory Setups, potion storage
-customisation and group storage. No automation, no input is sent, and nothing is
-sent over the network.
+customisation and group storage, and with the bank's own search, tabs, the "view
+all items" tab and the potion store.
+
+Tested in resizable mode with and without stretched mode, across client sizes
+from small windows to full screen, and while resizing the client with the bank
+open. Fixed mode is left alone.
+
+No automation, no input is sent, and nothing is sent over the network.
 
 ## License
 
