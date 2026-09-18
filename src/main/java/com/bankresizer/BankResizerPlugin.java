@@ -61,6 +61,9 @@ public class BankResizerPlugin extends Plugin
 	/** Pixels kept clear between the widened bank and the edge of the viewport. */
 	private static final int EDGE_MARGIN = 4;
 
+	/** Width of the rule the game draws between the store's columns. */
+	private static final int DIVIDER_WIDTH = 1;
+
 	/**
 	 * Chrome width assumed when the bank frame cannot be measured.
 	 * Deliberately generous: overestimating costs a column, underestimating
@@ -666,11 +669,17 @@ public class BankResizerPlugin extends Plugin
 				continue;
 			}
 
+			// A divider is thin whatever its height, which matters because a
+			// section of one row is exactly as tall as an entry.
+			if (child.getOriginalWidth() <= DIVIDER_WIDTH)
+			{
+				rules.add(child);
+				continue;
+			}
+
 			if (child.getOriginalHeight() > BankLayout.ROW_PITCH)
 			{
-				// The full width block is the section; the thin one beside it is
-				// the divider between the columns.
-				(child.getOriginalWidth() > BankLayout.ITEM_WIDTH ? sections : rules).add(child);
+				sections.add(child);
 				continue;
 			}
 
@@ -748,18 +757,71 @@ public class BankResizerPlugin extends Plugin
 
 			resize(section, section.getOriginalWidth(), height, 0, cursor);
 
-			for (Widget rule : rules)
-			{
-				if (rule.getOriginalY() >= top && rule.getOriginalY() < bottom)
-				{
-					resize(rule, rule.getOriginalWidth(), height, entryWidth, cursor);
-				}
-			}
+			divide(items, rules, top, bottom, columns, entryWidth, height, cursor);
 
 			cursor += height + gap;
 		}
 
 		items.setScrollHeight(Math.max(0, cursor - gap));
+	}
+
+	/**
+	 * Draws the dividers between one section's columns.
+	 *
+	 * The game makes one divider per section, enough for the two columns it draws
+	 * itself, so the rest are made here and the spares hidden. They are found
+	 * again on the next pass like any other, so this settles rather than piling
+	 * them up.
+	 */
+	private void divide(Widget items, List<Widget> rules, int top, int bottom,
+		int columns, int entryWidth, int height, int y)
+	{
+		List<Widget> mine = new ArrayList<>();
+		for (Widget rule : rules)
+		{
+			if (rule.getOriginalY() >= top && rule.getOriginalY() < bottom)
+			{
+				mine.add(rule);
+			}
+		}
+
+		if (mine.isEmpty())
+		{
+			return;
+		}
+
+		for (int column = 1; column < columns; column++)
+		{
+			Widget rule = column <= mine.size() ? mine.get(column - 1) : copyOf(items, mine.get(0));
+			if (rule == null)
+			{
+				return;
+			}
+
+			rule.setHidden(false);
+			resize(rule, DIVIDER_WIDTH, height, column * entryWidth, y);
+		}
+
+		// More dividers than boundaries, which happens when the count drops.
+		for (int spare = columns - 1; spare < mine.size(); spare++)
+		{
+			mine.get(spare).setHidden(true);
+		}
+	}
+
+	/** A new divider styled like the one the game drew. */
+	private Widget copyOf(Widget items, Widget original)
+	{
+		Widget copy = items.createChild(-1, original.getType());
+		if (copy == null)
+		{
+			return null;
+		}
+
+		copy.setTextColor(original.getTextColor());
+		copy.setOpacity(original.getOpacity());
+		copy.setFilled(original.isFilled());
+		return copy;
 	}
 
 	/** Puts one entry, and every part of it, at {@code x, y}. */
