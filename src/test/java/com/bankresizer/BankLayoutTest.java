@@ -57,9 +57,19 @@ public class BankLayoutTest
 	}
 
 	@Test
+	public void neverAsksForMoreColumnsThanTheClientWillDraw()
+	{
+		// At 29 the game stops rebuilding the bank and nothing is drawn, however
+		// much room there is: seen on play areas of both 725 and 2952.
+		assertEquals(BankLayout.MAX_COLUMNS, BankLayout.maxColumnsFor(100000));
+		assertEquals(BankLayout.MAX_COLUMNS,
+			BankLayout.maxColumnsFor(BankLayout.containerWidthFor(40)));
+	}
+
+	@Test
 	public void maxColumnsRoundTripsWithRequiredWidth()
 	{
-		for (int columns = 8; columns <= 24; columns++)
+		for (int columns = 8; columns <= BankLayout.MAX_COLUMNS; columns++)
 		{
 			int width = BankLayout.containerWidthFor(columns);
 			assertEquals("columns=" + columns, columns, BankLayout.maxColumnsFor(width));

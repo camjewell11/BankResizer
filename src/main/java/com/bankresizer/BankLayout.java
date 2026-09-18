@@ -39,6 +39,13 @@ final class BankLayout
 
 	static final int VANILLA_COLUMNS = 8;
 
+	/**
+	 * Most columns the client will draw. Measured: at 28 the bank renders and the
+	 * game keeps rebuilding it, at 29 it stops rebuilding and nothing is drawn.
+	 * Independent of the room available, seen on play areas of 725 and 2952.
+	 */
+	static final int MAX_COLUMNS = 28;
+
 	/** Item container width the unmodified client sets. */
 	static final int VANILLA_CONTAINER_WIDTH = 460;
 
@@ -68,7 +75,7 @@ final class BankLayout
 	static int maxColumnsFor(int availableWidth)
 	{
 		int extra = (availableWidth - VANILLA_CONTAINER_WIDTH) / COLUMN_PITCH;
-		return Math.max(VANILLA_COLUMNS, VANILLA_COLUMNS + extra);
+		return Math.min(MAX_COLUMNS, Math.max(VANILLA_COLUMNS, VANILLA_COLUMNS + extra));
 	}
 
 	/**

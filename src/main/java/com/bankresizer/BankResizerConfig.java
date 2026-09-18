@@ -28,8 +28,8 @@ public interface BankResizerConfig extends Config
 
 	@ConfigItem(
 		keyName = "columns",
-		name = "Columns (8 or more)",
-		description = "Items per row in the bank, minimum 8."
+		name = "Columns",
+		description = "Items per row in the bank, from 8 to 28."
 			+ "<br><br>8 is the normal game layout and leaves the bank untouched."
 			+ "<br><br>Takes effect the next time you open the bank."
 			+ "<br><br>Capped to whatever fits in your client window, so asking for"
@@ -41,7 +41,7 @@ public interface BankResizerConfig extends Config
 	)
 	@Range(
 		min = BankLayout.VANILLA_COLUMNS,
-		max = 24
+		max = BankLayout.MAX_COLUMNS
 	)
 	default int columns()
 	{
