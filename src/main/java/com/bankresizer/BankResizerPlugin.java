@@ -18,6 +18,7 @@ package com.bankresizer;
 
 import com.google.inject.Provides;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -250,7 +251,7 @@ public class BankResizerPlugin extends Plugin
 		}
 
 		// Before any of the early returns below.
-		spreadPotionEntries();
+		layoutPotionStore();
 
 		// Fixed mode lays the interface out differently and the measurement
 		// that bounds the width finds the whole canvas rather than the game
@@ -619,7 +620,19 @@ public class BankResizerPlugin extends Plugin
 		}
 	}
 
-	private void spreadPotionEntries()
+	/**
+	 * Lays the potion store out in as many columns as its width allows.
+	 *
+	 * The game draws two columns whatever the size, so a store as wide as a
+	 * widened bank wastes most of its room. Entries are repacked, the sections
+	 * behind them resized, and the scroll shortened to match.
+	 *
+	 * Nothing here trusts an entry to be where it was left: these widgets outlive
+	 * the bank closing, the game relays some of them on its own, and another
+	 * plugin may reorder them. Sections come from the full width blocks behind
+	 * them, and the offsets within an entry from what most entries agree on.
+	 */
+	private void layoutPotionStore()
 	{
 		Widget items = client.getWidget(InterfaceID.Bankmain.POTIONSTORE_ITEMS);
 		if (items == null || items.isHidden())
@@ -633,16 +646,31 @@ public class BankResizerPlugin extends Plugin
 			return;
 		}
 
-		// Each entry as {first child, one past its last, block x, block y}.
+		int width = items.getWidth();
+		int columns = BankLayout.potionColumnsFor(width);
+		int entryWidth = width / columns;
+		if (entryWidth <= 0)
+		{
+			return;
+		}
+
 		List<int[]> entries = new ArrayList<>();
-		int entryWidth = 0;
+		List<Widget> sections = new ArrayList<>();
+		List<Widget> rules = new ArrayList<>();
 
 		for (int i = 0; i < children.length; i++)
 		{
 			Widget child = children[i];
-			if (child == null || child.isSelfHidden()
-				|| child.getOriginalHeight() > BankLayout.ROW_PITCH)
+			if (child == null || child.isSelfHidden())
 			{
+				continue;
+			}
+
+			if (child.getOriginalHeight() > BankLayout.ROW_PITCH)
+			{
+				// The full width block is the section; the thin one beside it is
+				// the divider between the columns.
+				(child.getOriginalWidth() > BankLayout.ITEM_WIDTH ? sections : rules).add(child);
 				continue;
 			}
 
@@ -655,57 +683,142 @@ public class BankResizerPlugin extends Plugin
 
 				entries.add(new int[]{i, children.length, child.getOriginalX(),
 					child.getOriginalY()});
-				entryWidth = Math.max(entryWidth, child.getOriginalWidth());
 			}
 		}
 
-		if (entries.size() < 2 || entryWidth <= 0)
+		if (entries.size() < 2 || sections.isEmpty())
 		{
 			return;
 		}
 
-		// Reading order within a row, so the leftmost entry of each row is its
-		// first column however the entries are currently placed.
 		List<int[]> byRow = new ArrayList<>(entries);
-		byRow.sort((a, b) -> a[3] != b[3]
-			? Integer.compare(a[3], b[3])
-			: a[2] != b[2] ? Integer.compare(a[2], b[2]) : Integer.compare(a[0], b[0]));
+		byRow.sort(READING_ORDER);
 
-		// Every entry is built the same way, so the offset of each part is
-		// taken as the one most of them agree on.
 		int icon = commonOffset(children, entries, Part.ICON);
 		int text = commonOffset(children, entries, Part.TEXT);
-		int heart = commonOffset(children, entries, Part.HEART);
-		int pitch = columnPitch(byRow);
-		int inset = pitch > 0 && heart > 0 && heart < pitch ? pitch - heart : -1;
+		int heartInset = heartInsetFrom(children, byRow);
 
-		int column = 0;
-		int row = Integer.MIN_VALUE;
+		sections.sort((a, b) -> Integer.compare(a.getOriginalY(), b.getOriginalY()));
 
-		for (int[] entry : byRow)
+		// The gap above the first section is the band its heading sits in, and
+		// every section keeps the same gap above it.
+		int gap = sections.get(0).getOriginalY();
+		int cursor = gap;
+
+		for (Widget section : sections)
 		{
-			column = entry[3] == row ? column + 1 : 0;
-			row = entry[3];
+			int top = section.getOriginalY();
+			int bottom = top + section.getOriginalHeight();
 
-			int base = column * entryWidth;
-
-			for (int i = entry[0]; i < entry[1]; i++)
+			List<int[]> mine = new ArrayList<>();
+			for (int[] entry : byRow)
 			{
-				Widget child = children[i];
-				if (child == null || child.isSelfHidden()
-					|| child.getOriginalHeight() > BankLayout.ROW_PITCH
-					|| !partOfEntry(child, entry))
+				if (entry[3] >= top && entry[3] < bottom)
 				{
-					continue;
-				}
-
-				int moved = base + offsetFor(child, icon, text, heart, inset, entryWidth);
-				if (moved != child.getOriginalX())
-				{
-					child.setOriginalX(moved);
-					child.revalidate();
+					mine.add(entry);
 				}
 			}
+
+			if (mine.isEmpty())
+			{
+				continue;
+			}
+
+			int rows = (mine.size() + columns - 1) / columns;
+			int height = rows * BankLayout.ROW_PITCH;
+			int shift = cursor - top;
+
+			for (int i = 0; i < mine.size(); i++)
+			{
+				placeEntry(children, mine.get(i), (i % columns) * entryWidth,
+					cursor + (i / columns) * BankLayout.ROW_PITCH,
+					entryWidth, icon, text, heartInset);
+			}
+
+			// The heading above this section travels with it.
+			for (Widget child : children)
+			{
+				if (child != null && !child.isSelfHidden()
+					&& child.getOriginalHeight() <= BankLayout.ROW_PITCH
+					&& child.getOriginalY() >= top - gap && child.getOriginalY() < top)
+				{
+					move(child, child.getOriginalX(), child.getOriginalY() + shift);
+				}
+			}
+
+			resize(section, section.getOriginalWidth(), height, 0, cursor);
+
+			for (Widget rule : rules)
+			{
+				if (rule.getOriginalY() >= top && rule.getOriginalY() < bottom)
+				{
+					resize(rule, rule.getOriginalWidth(), height, entryWidth, cursor);
+				}
+			}
+
+			cursor += height + gap;
+		}
+
+		items.setScrollHeight(Math.max(0, cursor - gap));
+	}
+
+	/** Puts one entry, and every part of it, at {@code x, y}. */
+	private void placeEntry(Widget[] children, int[] entry, int x, int y, int entryWidth,
+		int icon, int text, int heartInset)
+	{
+		for (int i = entry[0]; i < entry[1]; i++)
+		{
+			Widget child = children[i];
+			if (child == null || child.isSelfHidden()
+				|| child.getOriginalHeight() > BankLayout.ROW_PITCH
+				|| !partOfEntry(child, entry))
+			{
+				continue;
+			}
+
+			int down = child.getOriginalY() - entry[3];
+
+			switch (partOf(child))
+			{
+				case BLOCK:
+					resize(child, entryWidth, child.getOriginalHeight(), x, y);
+					break;
+
+				case ICON:
+					move(child, x + icon, y + down);
+					break;
+
+				case HEART:
+					move(child, x + entryWidth - Math.max(0, heartInset), y + down);
+					break;
+
+				default:
+					resize(child, entryWidth, child.getOriginalHeight(), x + text, y + down);
+					break;
+			}
+		}
+	}
+
+	private void move(Widget widget, int x, int y)
+	{
+		if (widget.getOriginalX() != x || widget.getOriginalY() != y)
+		{
+			widget.setOriginalX(x);
+			widget.setOriginalY(y);
+			widget.revalidate();
+		}
+	}
+
+	private void resize(Widget widget, int width, int height, int x, int y)
+	{
+		if (widget.getOriginalWidth() != width || widget.getOriginalHeight() != height
+			|| widget.getOriginalX() != x || widget.getOriginalY() != y)
+		{
+			widget.setOriginalWidth(width);
+			widget.setOriginalHeight(height);
+			widget.setOriginalX(x);
+			widget.setOriginalY(y);
+			widget.revalidate();
 		}
 	}
 
@@ -713,11 +826,70 @@ public class BankResizerPlugin extends Plugin
 	 * Whether this child is part of the given entry rather than something
 	 * drawn between entries. By its y, which is never written here.
 	 */
+	/**
+	 * How far the favourite heart sits from the right of its entry, or -1 when no
+	 * row shows one. Worked out again each pass rather than kept: it depends on
+	 * the spacing the entries currently have, and that changes.
+	 */
+	private int heartInsetFrom(Widget[] children, List<int[]> byRow)
+	{
+		for (int i = 0; i + 1 < byRow.size(); i++)
+		{
+			int[] left = byRow.get(i);
+			int[] right = byRow.get(i + 1);
+
+			if (left[3] != right[3])
+			{
+				continue;
+			}
+
+			int pitch = right[2] - left[2];
+			if (pitch <= 0)
+			{
+				continue;
+			}
+
+			int heart = Math.max(heartOffsetIn(children, left), heartOffsetIn(children, right));
+			if (heart > 0 && heart < pitch)
+			{
+				return pitch - heart;
+			}
+		}
+
+		return -1;
+	}
+
+	/** How far right of its own start an entry's heart sits, or -1 without one. */
+	private int heartOffsetIn(Widget[] children, int[] entry)
+	{
+		for (int i = entry[0]; i < entry[1]; i++)
+		{
+			Widget child = children[i];
+			if (child == null || child.isSelfHidden()
+				|| child.getOriginalHeight() > BankLayout.ROW_PITCH)
+			{
+				continue;
+			}
+
+			if (isFavouriteHeart(child))
+			{
+				return child.getOriginalX() - entry[2];
+			}
+		}
+
+		return -1;
+	}
+
 	private boolean partOfEntry(Widget child, int[] entry)
 	{
 		return child.getOriginalY() >= entry[3]
 			&& child.getOriginalY() < entry[3] + BankLayout.ROW_PITCH;
 	}
+
+	/** Reading order: down the rows, then left to right within one. */
+	private static final Comparator<int[]> READING_ORDER = (a, b) -> a[3] != b[3]
+		? Integer.compare(a[3], b[3])
+		: a[2] != b[2] ? Integer.compare(a[2], b[2]) : Integer.compare(a[0], b[0]);
 
 	private enum Part
 	{
@@ -747,26 +919,6 @@ public class BankResizerPlugin extends Plugin
 	private boolean isFavouriteHeart(Widget child)
 	{
 		return partOf(child) == Part.HEART;
-	}
-
-	/** Where in its entry a part belongs, once the entry starts at zero. */
-	private int offsetFor(Widget child, int icon, int text, int heart, int inset, int entryWidth)
-	{
-		switch (partOf(child))
-		{
-			case BLOCK:
-				return 0;
-
-			case ICON:
-				return icon;
-
-			case HEART:
-				// The one part the game holds against the entry's right edge.
-				return inset >= 0 ? entryWidth - inset : heart;
-
-			default:
-				return text;
-		}
 	}
 
 	/** The offset most entries put {@code part} at, or 0 if none agree. */
@@ -804,24 +956,6 @@ public class BankResizerPlugin extends Plugin
 		}
 
 		return best;
-	}
-
-	/** Gap between the two entries of a row, or 0 when no row holds two. */
-	private int columnPitch(List<int[]> byRow)
-	{
-		for (int i = 0; i + 1 < byRow.size(); i++)
-		{
-			if (byRow.get(i)[3] == byRow.get(i + 1)[3])
-			{
-				int pitch = byRow.get(i + 1)[2] - byRow.get(i)[2];
-				if (pitch > 0)
-				{
-					return pitch;
-				}
-			}
-		}
-
-		return 0;
 	}
 
 	/**

@@ -46,6 +46,13 @@ final class BankLayout
 	 */
 	static final int MAX_COLUMNS = 28;
 
+	/**
+	 * Narrowest a potion store entry may become. Its name sits 38px in, so this
+	 * leaves roughly the room vanilla gives it; below that the longer potion
+	 * names start to clip, which is worse than scrolling.
+	 */
+	static final int MIN_POTION_ENTRY_WIDTH = 252;
+
 	/** Item container width the unmodified client sets. */
 	static final int VANILLA_CONTAINER_WIDTH = 460;
 
@@ -114,6 +121,12 @@ final class BankLayout
 		}
 
 		return (itemCount + columns - 1) / columns;
+	}
+
+	/** Columns the potion store can hold in {@code width} without clipping names. */
+	static int potionColumnsFor(int width)
+	{
+		return Math.max(2, width / MIN_POTION_ENTRY_WIDTH);
 	}
 
 	/** Scroll height for {@code rows} rows, with the game's own slack. */

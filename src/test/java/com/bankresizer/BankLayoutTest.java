@@ -127,6 +127,33 @@ public class BankLayoutTest
 	}
 
 	@Test
+	public void potionColumnsNeverDropBelowVanilla()
+	{
+		// A vanilla store is 419 wide and shows two columns; it must not narrow.
+		assertEquals(2, BankLayout.potionColumnsFor(419));
+		assertEquals(2, BankLayout.potionColumnsFor(0));
+	}
+
+	@Test
+	public void potionColumnsGrowWithTheRoomForThem()
+	{
+		// Measured live: an 889 wide store fits three, and 1379 fits five.
+		assertEquals(3, BankLayout.potionColumnsFor(889));
+		assertEquals(5, BankLayout.potionColumnsFor(1379));
+	}
+
+	@Test
+	public void aPotionEntryNeverNarrowsPastItsName()
+	{
+		for (int width = 400; width <= 3000; width += 7)
+		{
+			int columns = BankLayout.potionColumnsFor(width);
+			assertTrue("width=" + width,
+				columns == 2 || width / columns >= BankLayout.MIN_POTION_ENTRY_WIDTH);
+		}
+	}
+
+	@Test
 	public void emptyGridHasNoScroll()
 	{
 		assertEquals(0, BankLayout.scrollHeightFor(0));
