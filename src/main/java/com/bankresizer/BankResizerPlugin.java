@@ -152,6 +152,13 @@ public class BankResizerPlugin extends Plugin
 	 */
 	private boolean modified;
 
+	/**
+	 * The chain measured while the bank was still as the game drew it. Held for
+	 * the life of the interface: the rule that finds it reads the width modes
+	 * this plugin overwrites, so measuring again would read back its own work.
+	 */
+	private BankRoom room;
+
 	/** Column count asked for when the bank was opened, held until it closes. */
 	private int latchedColumns = -1;
 
@@ -255,6 +262,7 @@ public class BankResizerPlugin extends Plugin
 				restoreLayout();
 				restoreAncestors();
 				originalWidths.clear();
+				room = null;
 				modified = false;
 			}
 
@@ -293,6 +301,7 @@ public class BankResizerPlugin extends Plugin
 			restoreLayout();
 			restoreAncestors();
 			originalWidths.clear();
+			room = null;
 
 			modified = false;
 			latchedColumns = BankLayout.VANILLA_COLUMNS;
@@ -421,6 +430,18 @@ public class BankResizerPlugin extends Plugin
 		return Math.max(BankLayout.VANILLA_COLUMNS, Math.min(latchedColumns, limit));
 	}
 
+	/** The bank's room to grow, measured once while the tree is untouched. */
+	private BankRoom room()
+	{
+		if (room == null)
+		{
+			room = BankRoom.measure(client.getWidget(InterfaceID.Bankmain.UNIVERSE),
+				client.getCanvasWidth());
+		}
+
+		return room;
+	}
+
 	/** Widest the item container may become without leaving the viewport. */
 	private int availableContainerWidth()
 	{
@@ -432,7 +453,7 @@ public class BankResizerPlugin extends Plugin
 		}
 
 		// The play area, which does not change as the bank grows.
-		int maxWindow = BankRoom.measure(root, canvasWidth).getLimit() - 2 * EDGE_MARGIN;
+		int maxWindow = room().getLimit() - 2 * EDGE_MARGIN;
 
 		return maxWindow - measuredChrome();
 	}
@@ -464,7 +485,7 @@ public class BankResizerPlugin extends Plugin
 		// The bank window and every fixed-width ancestor holding it. Widening
 		// the window alone leaves it inside a 512 wide slot that clips it.
 		Widget root = client.getWidget(InterfaceID.Bankmain.UNIVERSE);
-		BankRoom room = BankRoom.measure(root, client.getCanvasWidth());
+		BankRoom room = room();
 		List<Widget> chain = room.getChain();
 		int playAreaHeight = room.getHeightLimit();
 
@@ -942,6 +963,7 @@ public class BankResizerPlugin extends Plugin
 	{
 		originalWidths.clear();
 		resizedAncestors.clear();
+		room = null;
 		modified = false;
 		latchedColumns = -1;
 		appliedColumns = -1;
