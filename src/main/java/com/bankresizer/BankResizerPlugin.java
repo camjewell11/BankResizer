@@ -22,7 +22,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import javax.inject.Inject;
-import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.ScriptID;
@@ -42,7 +41,6 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.banktags.BankTagsService;
 
-@Slf4j
 @PluginDescriptor(
 	name = "Bank Resizer",
 	description = "Widen the bank interface to show more columns of items",
@@ -295,9 +293,6 @@ public class BankResizerPlugin extends Plugin
 		// ancestor widths, and the sizes saved to undo them by.
 		if (modified && (canvasWidth != appliedCanvasWidth || canvasHeight != appliedCanvasHeight))
 		{
-			log.debug("Client resized to {}x{}; returning the bank to {} columns until reopened",
-				canvasWidth, canvasHeight, BankLayout.VANILLA_COLUMNS);
-
 			restoreLayout();
 			restoreAncestors();
 			originalWidths.clear();
@@ -326,19 +321,15 @@ public class BankResizerPlugin extends Plugin
 
 		int delta = targetWidth - BankLayout.VANILLA_CONTAINER_WIDTH;
 
-		log.debug("Laying out bank at {} columns, container width {}", columns, targetWidth);
-
 		// Before resizeChrome, and it has to stay that way.
 		pinTabsLeft(delta);
 		resizeChrome(delta);
 		shiftBottomRow(delta);
 		setWidth(items, targetWidth);
 
-		if (itemsOwnedByAnotherPlugin(items))
-		{
-			log.debug("Another plugin owns the item positions; widening the frame only");
-		}
-		else
+		// A bank tag layout or a plugin that arranges the items itself keeps its
+		// own positions; only the frame widens around them.
+		if (!itemsOwnedByAnotherPlugin(items))
 		{
 			layoutItems(items, columns, targetWidth);
 		}
