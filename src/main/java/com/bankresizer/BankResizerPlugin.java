@@ -67,6 +67,15 @@ public class BankResizerPlugin extends Plugin
 	 */
 	private static final int FALLBACK_CHROME_WIDTH = 60;
 
+	/**
+	 * The script that lays out the bank settings menu, which the game runs each
+	 * time the bank is opened. It has no name in the api. Identified by watching
+	 * which script was running whenever that menu's rows moved: this one always
+	 * produces the layout the menu is drawn with, so its result is what gets
+	 * remembered and put back.
+	 */
+	private static final int BANKMAIN_SETTINGS_LAYOUT = 191;
+
 	/** Above this, a measured chrome width is treated as a bad reading. */
 	private static final int MAX_PLAUSIBLE_CHROME_WIDTH = 200;
 
@@ -109,6 +118,12 @@ public class BankResizerPlugin extends Plugin
 	 * outlives the bank closing while the bank's own widgets are rebuilt.
 	 */
 	private final List<Widget> resizedAncestors = new ArrayList<>();
+
+	/**
+	 * Row positions of the bank settings menu as the game lays them out, kept
+	 * so they can be put back after widening makes it lay them out again.
+	 */
+	private int[] vanillaSettingsRows;
 
 	/** A widget's width as it was before this plugin touched it. */
 	private static final class WidgetSize
@@ -187,6 +202,7 @@ public class BankResizerPlugin extends Plugin
 	{
 		clientThread.invokeLater(() ->
 		{
+			unpinSettingsMenu();
 			restoreLayout();
 			restoreAncestors();
 			resetState();
@@ -196,6 +212,12 @@ public class BankResizerPlugin extends Plugin
 	@Subscribe
 	public void onScriptPostFired(ScriptPostFired event)
 	{
+		if (event.getScriptId() == BANKMAIN_SETTINGS_LAYOUT)
+		{
+			saveSettingsRows();
+		}
+
+
 		// bankmain_build calls bankmain_finishbuilding as its final statement, so
 		// by the time this fires the vanilla layout and scroll size are settled.
 		if (event.getScriptId() == ScriptID.BANKMAIN_BUILD
@@ -243,6 +265,9 @@ public class BankResizerPlugin extends Plugin
 	 */
 	private void applyLayout()
 	{
+		pinSettingsMenu();
+		trackSettingsRows();
+
 		Widget items = client.getWidget(InterfaceID.Bankmain.ITEMS);
 		if (items == null || items.isHidden())
 		{
@@ -340,7 +365,11 @@ public class BankResizerPlugin extends Plugin
 			layoutItems(items, columns, targetWidth);
 		}
 
+		// Widening the window makes the game lay the settings menu out again, so
+		// its rows are put back in the same pass rather than a tick later.
 		modified = true;
+		trackSettingsRows();
+
 		appliedColumns = columns;
 		appliedCanvasWidth = canvasWidth;
 		appliedCanvasHeight = canvasHeight;
@@ -618,6 +647,143 @@ public class BankResizerPlugin extends Plugin
 			child.revalidate();
 		}
 	}
+
+	/**
+	 * Holds the bank settings menu at the width the game laid it out for. Its
+	 * rows are two columns, the left one anchored right and the right one
+	 * anchored left, so a wider container slides them into each other.
+	 */
+	private void pinSettingsMenu()
+	{
+		Widget menu = client.getWidget(InterfaceID.Bankmain.MENU_CONTAINER);
+		Widget root = client.getWidget(InterfaceID.Bankmain.UNIVERSE);
+		if (menu == null || root == null)
+		{
+			return;
+		}
+
+		// Saved as a mode and an inset rather than a resolved width, so it stays
+		// correct even if the first pass happens with the bank already widened.
+		WidgetSize size = savedSize(menu);
+		if (size.widthMode != WidgetSizeMode.MINUS)
+		{
+			return;
+		}
+
+		int vanilla = originalWidthOf(root) - size.originalWidth;
+		if (vanilla <= 0
+			|| (menu.getWidthMode() == WidgetSizeMode.ABSOLUTE && menu.getOriginalWidth() == vanilla))
+		{
+			return;
+		}
+
+		menu.setWidthMode(WidgetSizeMode.ABSOLUTE);
+		menu.setOriginalWidth(vanilla);
+		menu.revalidate();
+	}
+
+	/**
+	 * Remembers where the game just put the rows of the bank settings menu.
+	 * Only called straight after the game has laid that menu out, because the
+	 * rows keep whatever positions they were left with between bank opens, so
+	 * reading them at any other moment can pick up our own work.
+	 */
+	private void saveSettingsRows()
+	{
+		Widget menu = client.getWidget(InterfaceID.Bankmain.MENU_CONTAINER);
+		if (menu == null)
+		{
+			return;
+		}
+
+		Widget[] rows = menu.getStaticChildren();
+		if (rows == null)
+		{
+			return;
+		}
+
+		int[] saved = new int[rows.length];
+		for (int i = 0; i < rows.length; i++)
+		{
+			// The drawn position, not the original. The game sets where a row is
+			// drawn before the value it was positioned from catches up, so reading
+			// the latter here returns whatever this plugin left behind last time.
+			saved[i] = rows[i] == null ? 0 : rows[i].getRelativeY();
+		}
+
+		vanillaSettingsRows = saved;
+	}
+
+
+	/**
+	 * Keeps the rows of the bank settings menu where the game first put them.
+	 * Widening the window makes the game lay that menu out again, and it works
+	 * its rows out from the width of the window rather than of the menu, which
+	 * drops the first three rows on top of the next two.
+	 */
+	private void trackSettingsRows()
+	{
+		// Nothing to put back when the bank is its normal width, and the game is
+		// free to lay the menu out however it likes.
+		if (!modified)
+		{
+			return;
+		}
+
+		Widget menu = client.getWidget(InterfaceID.Bankmain.MENU_CONTAINER);
+		if (menu == null)
+		{
+			return;
+		}
+
+		Widget[] rows = menu.getStaticChildren();
+		if (rows == null)
+		{
+			return;
+		}
+
+		if (vanillaSettingsRows == null || vanillaSettingsRows.length != rows.length)
+		{
+			return;
+		}
+
+		for (int i = 0; i < rows.length; i++)
+		{
+			Widget row = rows[i];
+			if (row == null || row.getOriginalY() == vanillaSettingsRows[i])
+			{
+				continue;
+			}
+
+			row.setOriginalY(vanillaSettingsRows[i]);
+
+			// Revalidating the menu itself makes the game lay it out again, which is
+			// what moved the rows in the first place. Each row is settled on its own.
+			row.revalidate();
+		}
+	}
+
+
+	/** Gives the settings menu back to the game. */
+	private void unpinSettingsMenu()
+	{
+		Widget menu = client.getWidget(InterfaceID.Bankmain.MENU_CONTAINER);
+		if (menu == null)
+		{
+			return;
+		}
+
+		WidgetSize size = originalWidths.get(menu.getId());
+		if (size == null)
+		{
+			return;
+		}
+
+		menu.setWidthMode(size.widthMode);
+		menu.setOriginalWidth(size.originalWidth);
+		menu.revalidate();
+	}
+
 
 	private void spreadPotionEntries()
 	{
@@ -960,6 +1126,7 @@ public class BankResizerPlugin extends Plugin
 	{
 		originalWidths.clear();
 		resizedAncestors.clear();
+		vanillaSettingsRows = null;
 		room = null;
 		modified = false;
 		latchedColumns = -1;
