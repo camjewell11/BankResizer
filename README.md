@@ -30,9 +30,10 @@ the next open. Close the bank and open it again to see it.
 
 Eight is the minimum. The bank is never made narrower than the game draws it.
 
-The maximum depends on your client window: the bank will not grow past the edge
-of the game area, and the count is capped to whatever actually fits. Asking for
-more columns than there is room for simply gives you as many as fit.
+The maximum is 28, which is as many as the game will draw — past that it stops
+drawing the bank at all, however large your monitor is. Below that the limit is
+your client window: the bank never grows past the edge of the game area, and
+asking for more columns than fit simply gives you as many as fit.
 
 **This plugin only works in resizable mode.** In fixed mode the bank is left
 exactly as the game draws it, whatever the column count is set to.
