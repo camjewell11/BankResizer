@@ -85,6 +85,12 @@ Tested in resizable mode with and without stretched mode, across client sizes
 from small windows to full screen, and while resizing the client with the bank
 open. Fixed mode is left alone.
 
+**Fixed Resizable Hybrid** restyles the interface to look like fixed mode, and
+puts the bank inside a frame of its own that it holds to a set width. There is
+no room to widen the bank inside it, so this plugin stands aside and leaves the
+bank exactly as that one draws it, whatever the column count is set to. Nothing
+breaks; the bank simply stays eight across while that plugin is on.
+
 **Potion Storage Customizer** saves where each potion sits as an exact spot on
 screen, not a place in a list, and puts them back there every time the store is
 drawn. Those spots only suit the bank width they were saved at, so the two
