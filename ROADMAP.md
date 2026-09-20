@@ -45,43 +45,24 @@ those maintainers is the first step, not code in this repository.
 ## Compatibility with Expanded Bank
 
 **Asked for:** "If this could also work with the Expanded Bank plugin (increases
-vertical space) then we'd really be cooking". Asked what that plugin adds over
-the game's own vertical growth, the answer was that "it expands it all the way
-down to the edge of the screen".
+vertical space) then we'd really be cooking".
 
-**Status:** not tested, but a conflict is already visible in this plugin's own
-code.
+**Status:** done. The two work together.
 
-**What is known.** The two are complementary in intent, one widening and one
-heightening, and a user would reasonably want both. They are not complementary in
-implementation.
+**What was found.** They add room in different directions and do not contend for
+the same thing. The bank is held to the play area as the game reports it, and
+that grows and shrinks as the chatbox comes and goes, so the extra height is
+kept.
 
-When this plugin widens the bank it also pins the height of every ancestor it
-resizes to the height of the play area, in `resizeChrome`:
+Worth recording, because it was nearly got wrong: the height this plugin fixes
+on the bank's ancestors was suspected of clamping the extra height away, and was
+taken out to see. That was worse, not better, and it was put straight back. The
+clamp is load bearing: without it, revalidating grows the interface root to the
+whole canvas and the bank's lower rows go off screen. The report that prompted
+the suspicion turned out to be about a different plugin entirely.
 
-```java
-if (i > 0 && playAreaHeight > 0)
-{
-    node.setHeightMode(WidgetSizeMode.ABSOLUTE);
-    node.setOriginalHeight(playAreaHeight);
-}
-```
-
-That height comes from `BankRoom.getHeightLimit`, which is the viewport's own
-height. The pinning exists for a reason: revalidating the interface root grew it
-from the play area to the full canvas, leaving the bank in a container far too
-tall with its lower rows off screen.
-
-Expanded Bank takes the bank to the edge of the screen, which is past the
-viewport. This plugin clamps it to the viewport. Whichever writes last wins, so
-the likely symptom is the bank losing its extra height as soon as a column change
-or a client resize makes this plugin lay out again.
-
-**What it would take.** Stop clamping height while still avoiding the overgrown
-container the clamp was added to prevent. That means finding what actually made
-the root grow, rather than capping the result, and only fixing the width. This is
-the most invasive of these requests and the one most likely to reintroduce a bug
-that was already fixed once.
+What is left is [following the chatbox](#following-the-chatbox-without-reopening-the-bank),
+which is not specific to this pairing.
 
 ## Compatibility with Potion Storage Bars
 
