@@ -76,6 +76,9 @@ public class BankResizerPlugin extends Plugin
 	 */
 	private static final int BANKMAIN_SETTINGS_LAYOUT = 191;
 
+	/** Widest an upright rule between potion store columns can be. */
+	private static final int DIVIDER_WIDTH = 2;
+
 	/** Above this, a measured chrome width is treated as a bad reading. */
 	private static final int MAX_PLAUSIBLE_CHROME_WIDTH = 200;
 
@@ -124,6 +127,22 @@ public class BankResizerPlugin extends Plugin
 	 * so they can be put back after widening makes it lay them out again.
 	 */
 	private int[] vanillaSettingsRows;
+
+	/**
+	 * Whether this plugin placed the items that are in the bank now. Asking
+	 * whether another plugin owns them instead would be asking about the state
+	 * this plugin has already changed: a layout can take them over after they
+	 * were spread out here, and the spacing left behind is still ours to undo.
+	 */
+	private boolean itemsLaidOut;
+
+	/**
+	 * Width the bank window was left at by the last layout. Anything that makes
+	 * the game work the bank out again, such as the scrollbar appearing, can put
+	 * the window back to its own width while leaving the item container at ours,
+	 * and without this that goes unnoticed and the items hang off the edge.
+	 */
+	private int appliedRootWidth = -1;
 
 	/** A widget's width as it was before this plugin touched it. */
 	private static final class WidgetSize
@@ -205,6 +224,10 @@ public class BankResizerPlugin extends Plugin
 			unpinSettingsMenu();
 			restoreLayout();
 			restoreAncestors();
+
+			// After the ancestors, not before: the potion store is laid out from the
+			// width it has, and it only gets its own width back once they do.
+			spreadPotionEntries();
 			resetState();
 		});
 	}
@@ -216,7 +239,6 @@ public class BankResizerPlugin extends Plugin
 		{
 			saveSettingsRows();
 		}
-
 
 		// bankmain_build calls bankmain_finishbuilding as its final statement, so
 		// by the time this fires the vanilla layout and scroll size are settled.
@@ -286,6 +308,7 @@ public class BankResizerPlugin extends Plugin
 			{
 				restoreLayout();
 				restoreAncestors();
+				spreadPotionEntries();
 				originalWidths.clear();
 				room = null;
 				modified = false;
@@ -322,6 +345,7 @@ public class BankResizerPlugin extends Plugin
 		{
 			restoreLayout();
 			restoreAncestors();
+			spreadPotionEntries();
 			originalWidths.clear();
 			room = null;
 
@@ -363,10 +387,14 @@ public class BankResizerPlugin extends Plugin
 		if (!itemsOwnedByAnotherPlugin(items))
 		{
 			layoutItems(items, columns, targetWidth);
+			itemsLaidOut = true;
 		}
 
 		// Widening the window makes the game lay the settings menu out again, so
 		// its rows are put back in the same pass rather than a tick later.
+		Widget window = client.getWidget(InterfaceID.Bankmain.UNIVERSE);
+		appliedRootWidth = window == null ? -1 : window.getOriginalWidth();
+
 		modified = true;
 		trackSettingsRows();
 
@@ -382,28 +410,39 @@ public class BankResizerPlugin extends Plugin
 	 */
 	private boolean isUpToDate(Widget items, int columns, int canvasWidth, int targetWidth)
 	{
+		Widget root = client.getWidget(InterfaceID.Bankmain.UNIVERSE);
+
 		return modified
 			&& columns == appliedColumns
 			&& canvasWidth == appliedCanvasWidth
-			&& items.getOriginalWidth() == targetWidth;
+			&& items.getOriginalWidth() == targetWidth
+			&& root != null
+			&& root.getOriginalWidth() == appliedRootWidth;
 	}
 
 	private void restoreLayout()
 	{
+		// Hidden, not absent, still needs undoing: the bank can be showing the
+		// settings menu while this runs, and the ancestors are put back regardless,
+		// so bailing on hidden leaves a narrow frame around items still spread for
+		// a wide one.
 		Widget items = client.getWidget(InterfaceID.Bankmain.ITEMS);
-		if (items == null || items.isHidden())
+		if (items == null)
 		{
 			return;
 		}
-
 		resizeChrome(0);
 		pinTabsLeft(0);
 		shiftBottomRow(0);
 		setWidth(items, BankLayout.VANILLA_CONTAINER_WIDTH);
 
-		if (!itemsOwnedByAnotherPlugin(items))
+		// Whoever owns the items now, the spacing they are sitting at is this
+		// plugin's, and the frame around them has just been narrowed. Leaving it
+		// hangs the rightmost columns off the edge, where they are cut off.
+		if (itemsLaidOut)
 		{
 			layoutItems(items, BankLayout.VANILLA_COLUMNS, BankLayout.VANILLA_CONTAINER_WIDTH);
+			itemsLaidOut = false;
 		}
 	}
 
@@ -793,6 +832,7 @@ public class BankResizerPlugin extends Plugin
 			return;
 		}
 
+
 		Widget[] children = items.getDynamicChildren();
 		if (children == null)
 		{
@@ -801,7 +841,6 @@ public class BankResizerPlugin extends Plugin
 
 		// Each entry as {first child, one past its last, block x, block y}.
 		List<int[]> entries = new ArrayList<>();
-		int entryWidth = 0;
 
 		for (int i = 0; i < children.length; i++)
 		{
@@ -821,11 +860,10 @@ public class BankResizerPlugin extends Plugin
 
 				entries.add(new int[]{i, children.length, child.getOriginalX(),
 					child.getOriginalY()});
-				entryWidth = Math.max(entryWidth, child.getOriginalWidth());
 			}
 		}
 
-		if (entries.size() < 2 || entryWidth <= 0)
+		if (entries.size() < 2)
 		{
 			return;
 		}
@@ -836,6 +874,27 @@ public class BankResizerPlugin extends Plugin
 		byRow.sort((a, b) -> a[3] != b[3]
 			? Integer.compare(a[3], b[3])
 			: a[2] != b[2] ? Integer.compare(a[2], b[2]) : Integer.compare(a[0], b[0]));
+
+		// Worked out from the room the entries have now, not from how wide the game
+		// last made them. The game sets those widths and does not put them back, so
+		// after the bank narrows they still describe the width it used to be.
+		int columns = 0;
+		int perRow = 0;
+		int atY = Integer.MIN_VALUE;
+
+		for (int[] entry : byRow)
+		{
+			perRow = entry[3] == atY ? perRow + 1 : 1;
+			atY = entry[3];
+			columns = Math.max(columns, perRow);
+		}
+
+		int entryWidth = columns > 0 ? items.getWidth() / columns : 0;
+
+		if (entryWidth <= 0)
+		{
+			return;
+		}
 
 		// Every entry is built the same way, so the offset of each part is
 		// taken as the one most of them agree on.
@@ -866,13 +925,48 @@ public class BankResizerPlugin extends Plugin
 				}
 
 				int moved = base + offsetFor(child, icon, text, heart, inset, entryWidth);
+				boolean changed = false;
+
 				if (moved != child.getOriginalX())
 				{
 					child.setOriginalX(moved);
+					changed = true;
+				}
+
+				// The game gives the block and the two labels the width of the whole
+				// entry, and the icon and heart a size of their own. Measured at two
+				// bank widths. Setting it matters going narrower: the game does not
+				// shrink them back, so they overhang their column and are cut off.
+				int width = widthFor(child, entryWidth);
+				if (width > 0 && width != child.getOriginalWidth())
+				{
+					child.setOriginalWidth(width);
+					changed = true;
+				}
+
+				if (changed)
+				{
 					child.revalidate();
+
 				}
 			}
 		}
+
+		// The dividers between the columns are taller than a row, so the loop
+		// above steps over them. The game draws one per section on the column
+		// boundary and never moves it again, so it is left behind every time the
+		// entries are given a new width.
+		for (Widget child : children)
+		{
+			if (child == null || child.isSelfHidden() || !isColumnDivider(child)
+				|| child.getOriginalX() == entryWidth)
+			{
+				continue;
+			}
+			child.setOriginalX(entryWidth);
+			child.revalidate();
+		}
+
 	}
 
 	/**
@@ -916,6 +1010,30 @@ public class BankResizerPlugin extends Plugin
 	}
 
 	/** Where in its entry a part belongs, once the entry starts at zero. */
+	/**
+	 * Whether this is one of the upright rules the game draws between the
+	 * columns: a hairline that runs the height of a section rather than of a row.
+	 */
+	private boolean isColumnDivider(Widget child)
+	{
+		return child.getOriginalWidth() <= DIVIDER_WIDTH
+			&& child.getOriginalHeight() > BankLayout.ROW_PITCH;
+	}
+
+	/** Width the game gives a part of an entry, or -1 for one it sizes itself. */
+	private int widthFor(Widget child, int entryWidth)
+	{
+		switch (partOf(child))
+		{
+			case ICON:
+			case HEART:
+				return -1;
+
+			default:
+				return entryWidth;
+		}
+	}
+
 	private int offsetFor(Widget child, int icon, int text, int heart, int inset, int entryWidth)
 	{
 		switch (partOf(child))
@@ -1127,6 +1245,8 @@ public class BankResizerPlugin extends Plugin
 		originalWidths.clear();
 		resizedAncestors.clear();
 		vanillaSettingsRows = null;
+		itemsLaidOut = false;
+		appliedRootWidth = -1;
 		room = null;
 		modified = false;
 		latchedColumns = -1;
