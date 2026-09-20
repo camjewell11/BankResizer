@@ -19,12 +19,31 @@ package com.bankresizer;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
+import net.runelite.client.config.ConfigSection;
 import net.runelite.client.config.Range;
 
 @ConfigGroup(BankResizerConfig.GROUP)
 public interface BankResizerConfig extends Config
 {
 	String GROUP = "bankresizer";
+
+	@ConfigSection(
+		name = "Bank still wrong when off?",
+		description = "The bank goes back to normal on its own when this plugin is"
+			+ " turned off."
+			+ "<br><br>If it still looks wrong, with columns out of line or labels cut"
+			+ " off, another plugin is arranging the bank from positions of its own"
+			+ " that no longer suit the width."
+			+ "<br><br>Potion Storage Customizer, Expanded Bank, Bank Tag Layouts,"
+			+ " Bank Tags and Inventory Setups all place things themselves, and so"
+			+ " will any other plugin that arranges what is in the bank. Turn them"
+			+ " off, open the bank once, then turn them back on."
+			+ "<br><br>Restarting the client does not clear it, because those"
+			+ " positions are saved between sessions.",
+		position = 10,
+		closedByDefault = false
+	)
+	String RECOVERY = "recovery";
 
 	@ConfigItem(
 		keyName = "columns",

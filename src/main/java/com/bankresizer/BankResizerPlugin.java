@@ -76,6 +76,13 @@ public class BankResizerPlugin extends Plugin
 	 */
 	private static final int BANKMAIN_SETTINGS_LAYOUT = 191;
 
+	/**
+	 * The gap the game leaves between potion store columns, which is where it
+	 * draws the rule. Column one starts one pixel past the end of column zero,
+	 * so the columns are a pixel narrower than an even split of the container.
+	 */
+	private static final int COLUMN_RULE = 1;
+
 	/** Widest an upright rule between potion store columns can be. */
 	private static final int DIVIDER_WIDTH = 2;
 
@@ -135,6 +142,19 @@ public class BankResizerPlugin extends Plugin
 	 * were spread out here, and the spacing left behind is still ours to undo.
 	 */
 	private boolean itemsLaidOut;
+
+	/**
+	 * How the game builds one entry of the potion store, read from a build of
+	 * its own. Offsets and an inset rather than positions, so they hold at any
+	 * width. Unset until the game has built the store at least once.
+	 */
+	private int potionColumns = -1;
+
+	private int potionIconOffset;
+
+	private int potionTextOffset;
+
+	private int potionHeartInset;
 
 	/**
 	 * Width the bank window was left at by the last layout. Anything that makes
@@ -238,6 +258,11 @@ public class BankResizerPlugin extends Plugin
 		if (event.getScriptId() == BANKMAIN_SETTINGS_LAYOUT)
 		{
 			saveSettingsRows();
+		}
+
+		if (event.getScriptId() == ScriptID.POTIONSTORE_BUILD)
+		{
+			savePotionLayout();
 		}
 
 		// bankmain_build calls bankmain_finishbuilding as its final statement, so
@@ -824,22 +849,12 @@ public class BankResizerPlugin extends Plugin
 	}
 
 
-	private void spreadPotionEntries()
+	/**
+	 * Collects the potion store entries as {first child, one past its last,
+	 * block x, block y}. An entry runs from its background to the next one.
+	 */
+	private List<int[]> potionEntries(Widget[] children)
 	{
-		Widget items = client.getWidget(InterfaceID.Bankmain.POTIONSTORE_ITEMS);
-		if (items == null || items.isHidden())
-		{
-			return;
-		}
-
-
-		Widget[] children = items.getDynamicChildren();
-		if (children == null)
-		{
-			return;
-		}
-
-		// Each entry as {first child, one past its last, block x, block y}.
 		List<int[]> entries = new ArrayList<>();
 
 		for (int i = 0; i < children.length; i++)
@@ -863,21 +878,30 @@ public class BankResizerPlugin extends Plugin
 			}
 		}
 
-		if (entries.size() < 2)
-		{
-			return;
-		}
-
-		// Reading order within a row, so the leftmost entry of each row is its
-		// first column however the entries are currently placed.
-		List<int[]> byRow = new ArrayList<>(entries);
-		byRow.sort((a, b) -> a[3] != b[3]
+		// Reading order within a row, so the leftmost entry of a row is its first
+		// column however the entries happen to be placed at the moment.
+		entries.sort((a, b) -> a[3] != b[3]
 			? Integer.compare(a[3], b[3])
 			: a[2] != b[2] ? Integer.compare(a[2], b[2]) : Integer.compare(a[0], b[0]));
 
-		// Worked out from the room the entries have now, not from how wide the game
-		// last made them. The game sets those widths and does not put them back, so
-		// after the bank narrows they still describe the width it used to be.
+		return entries;
+	}
+
+	/**
+	 * Width of one entry in a container this wide. The rules between the columns
+	 * take a pixel each, which the game allows for and this has to as well, or
+	 * every column after the first sits a pixel left of where the game puts it.
+	 */
+	private int potionEntryWidth(int containerWidth, int columns)
+	{
+		return columns > 0
+			? (containerWidth - (columns - 1) * COLUMN_RULE) / columns
+			: 0;
+	}
+
+	/** How many entries the busiest row holds. */
+	private int potionColumnsIn(List<int[]> byRow)
+	{
 		int columns = 0;
 		int perRow = 0;
 		int atY = Integer.MIN_VALUE;
@@ -889,20 +913,90 @@ public class BankResizerPlugin extends Plugin
 			columns = Math.max(columns, perRow);
 		}
 
-		int entryWidth = columns > 0 ? items.getWidth() / columns : 0;
+		return columns;
+	}
 
-		if (entryWidth <= 0)
+	/**
+	 * Records how the game builds an entry, from a build it has just done.
+	 *
+	 * Offsets and an inset are kept, never positions: those hold at any width,
+	 * so one reading describes the store however wide the bank later becomes.
+	 * Reading them back off the entries instead, as this used to, measured work
+	 * this plugin had already done and drifted further from the game each time.
+	 */
+	private void savePotionLayout()
+	{
+		Widget items = client.getWidget(InterfaceID.Bankmain.POTIONSTORE_ITEMS);
+		if (items == null)
 		{
 			return;
 		}
 
-		// Every entry is built the same way, so the offset of each part is
-		// taken as the one most of them agree on.
-		int icon = commonOffset(children, entries, Part.ICON);
-		int text = commonOffset(children, entries, Part.TEXT);
-		int heart = commonOffset(children, entries, Part.HEART);
-		int pitch = columnPitch(byRow);
-		int inset = pitch > 0 && heart > 0 && heart < pitch ? pitch - heart : -1;
+		Widget[] children = items.getDynamicChildren();
+		if (children == null)
+		{
+			return;
+		}
+
+		List<int[]> byRow = potionEntries(children);
+		int columns = potionColumnsIn(byRow);
+		if (byRow.size() < 2 || columns <= 0)
+		{
+			return;
+		}
+
+		int entryWidth = potionEntryWidth(items.getWidth(), columns);
+		int heart = commonOffset(children, byRow, Part.HEART);
+		if (entryWidth <= 0 || heart <= 0 || heart >= entryWidth)
+		{
+			return;
+		}
+
+		potionColumns = columns;
+		potionIconOffset = commonOffset(children, byRow, Part.ICON);
+		potionTextOffset = commonOffset(children, byRow, Part.TEXT);
+		potionHeartInset = entryWidth - heart;
+
+	}
+
+	/**
+	 * Lays the potion store out for the width it has now, from the reading taken
+	 * when the game built it. At the bank's normal width that reproduces the
+	 * game's own layout, so turning the plugin off restores the store whatever
+	 * state it was left in.
+	 */
+	private void spreadPotionEntries()
+	{
+		if (potionColumns <= 0)
+		{
+			return;
+		}
+
+		// Hidden is no reason to leave it: the store keeps what it was given
+		// between openings, so it is put right whether or not it is showing.
+		Widget items = client.getWidget(InterfaceID.Bankmain.POTIONSTORE_ITEMS);
+		if (items == null)
+		{
+			return;
+		}
+
+		Widget[] children = items.getDynamicChildren();
+		if (children == null)
+		{
+			return;
+		}
+
+		List<int[]> byRow = potionEntries(children);
+		if (byRow.size() < 2)
+		{
+			return;
+		}
+
+		int entryWidth = potionEntryWidth(items.getWidth(), potionColumns);
+		if (entryWidth <= potionHeartInset)
+		{
+			return;
+		}
 
 		int column = 0;
 		int row = Integer.MIN_VALUE;
@@ -912,7 +1006,7 @@ public class BankResizerPlugin extends Plugin
 			column = entry[3] == row ? column + 1 : 0;
 			row = entry[3];
 
-			int base = column * entryWidth;
+			int base = column * (entryWidth + COLUMN_RULE);
 
 			for (int i = entry[0]; i < entry[1]; i++)
 			{
@@ -924,38 +1018,13 @@ public class BankResizerPlugin extends Plugin
 					continue;
 				}
 
-				int moved = base + offsetFor(child, icon, text, heart, inset, entryWidth);
-				boolean changed = false;
-
-				if (moved != child.getOriginalX())
-				{
-					child.setOriginalX(moved);
-					changed = true;
-				}
-
-				// The game gives the block and the two labels the width of the whole
-				// entry, and the icon and heart a size of their own. Measured at two
-				// bank widths. Setting it matters going narrower: the game does not
-				// shrink them back, so they overhang their column and are cut off.
-				int width = widthFor(child, entryWidth);
-				if (width > 0 && width != child.getOriginalWidth())
-				{
-					child.setOriginalWidth(width);
-					changed = true;
-				}
-
-				if (changed)
-				{
-					child.revalidate();
-
-				}
+				placePart(child, base, entryWidth);
 			}
 		}
 
-		// The dividers between the columns are taller than a row, so the loop
-		// above steps over them. The game draws one per section on the column
-		// boundary and never moves it again, so it is left behind every time the
-		// entries are given a new width.
+		// The rules between the columns are taller than a row, so the loop above
+		// steps over them. The game draws one per section on the column boundary
+		// and never moves it again.
 		for (Widget child : children)
 		{
 			if (child == null || child.isSelfHidden() || !isColumnDivider(child)
@@ -963,11 +1032,37 @@ public class BankResizerPlugin extends Plugin
 			{
 				continue;
 			}
+
 			child.setOriginalX(entryWidth);
 			child.revalidate();
 		}
-
 	}
+
+	/** Puts one part of an entry where the game would put it at this width. */
+	private void placePart(Widget child, int base, int entryWidth)
+	{
+		int x = base + offsetFor(child, entryWidth);
+		int width = widthFor(child, entryWidth);
+		boolean changed = false;
+
+		if (x != child.getOriginalX())
+		{
+			child.setOriginalX(x);
+			changed = true;
+		}
+
+		if (width > 0 && width != child.getOriginalWidth())
+		{
+			child.setOriginalWidth(width);
+			changed = true;
+		}
+
+		if (changed)
+		{
+			child.revalidate();
+		}
+	}
+
 
 	/**
 	 * Whether this child is part of the given entry rather than something
@@ -1034,7 +1129,7 @@ public class BankResizerPlugin extends Plugin
 		}
 	}
 
-	private int offsetFor(Widget child, int icon, int text, int heart, int inset, int entryWidth)
+	private int offsetFor(Widget child, int entryWidth)
 	{
 		switch (partOf(child))
 		{
@@ -1042,16 +1137,17 @@ public class BankResizerPlugin extends Plugin
 				return 0;
 
 			case ICON:
-				return icon;
+				return potionIconOffset;
 
 			case HEART:
-				// The one part the game holds against the entry's right edge.
-				return inset >= 0 ? entryWidth - inset : heart;
+				// The one part the game holds against the entry right edge.
+				return entryWidth - potionHeartInset;
 
 			default:
-				return text;
+				return potionTextOffset;
 		}
 	}
+
 
 	/** The offset most entries put {@code part} at, or 0 if none agree. */
 	private int commonOffset(Widget[] children, List<int[]> entries, Part part)
@@ -1091,23 +1187,6 @@ public class BankResizerPlugin extends Plugin
 	}
 
 	/** Gap between the two entries of a row, or 0 when no row holds two. */
-	private int columnPitch(List<int[]> byRow)
-	{
-		for (int i = 0; i + 1 < byRow.size(); i++)
-		{
-			if (byRow.get(i)[3] == byRow.get(i + 1)[3])
-			{
-				int pitch = byRow.get(i + 1)[2] - byRow.get(i)[2];
-				if (pitch > 0)
-				{
-					return pitch;
-				}
-			}
-		}
-
-		return 0;
-	}
-
 	/**
 	 * Repositions every visible item using the same formula the game script
 	 * uses, then resizes the scroll region to match and rebuilds the

@@ -55,15 +55,43 @@ eight-per-row grid that the plugin cannot change.
 separators, the potion store, group storage, the buttons along the bottom —
 keeps working and stays where it belongs as the bank widens.
 
+## Turning it off
+
+The bank goes back to normal on its own, and the plugin can be removed at any
+time.
+
+If the bank or the potion store still looks wrong afterwards, with columns out
+of line or labels cut off, another plugin is arranging it from positions of its
+own that no longer suit the width. To clear it:
+
+1. Turn off the other plugins that arrange the bank: Potion Storage Customizer,
+   Expanded Bank, Bank Tag Layouts, Bank Tags, Inventory Setups, and any other
+   plugin that arranges what is in the bank.
+2. Open the bank once.
+3. Turn those plugins back on.
+
+Restarting the client does not clear it, because those positions are saved
+between sessions. There is also a **Put the bank back now** setting, which undoes
+everything this plugin has done without turning it off, though it cannot undo
+what another plugin has done.
+
 ## Compatibility
 
-Tested alongside bank tags, bank tag layouts, Inventory Setups, potion storage
-customisation and group storage, and with the bank's own search, tabs, the "view
-all items" tab and the potion store.
+Tested alongside bank tags, bank tag layouts, Inventory Setups and group
+storage, and with the bank's own search, tabs, the "view all items" tab and the
+potion store.
 
 Tested in resizable mode with and without stretched mode, across client sizes
 from small windows to full screen, and while resizing the client with the bank
 open. Fixed mode is left alone.
+
+**Potion Storage Customizer** saves where each potion sits as an exact spot on
+screen, not a place in a list, and puts them back there every time the store is
+drawn. Those spots only suit the bank width they were saved at, so the two
+plugins end up moving the same potions in turn, and turning this one off leaves
+the store looking scrambled until that plugin's saved order is reset. Arranging
+your potions with the bank at 8 columns avoids saving spots that do not fit.
+This has been reported to that plugin, and cannot be put right from here.
 
 No automation, no input is sent, and nothing is sent over the network.
 
