@@ -85,6 +85,11 @@ Tested in resizable mode with and without stretched mode, across client sizes
 from small windows to full screen, and while resizing the client with the bank
 open. Fixed mode is left alone.
 
+**Expanded Bank** works alongside this one. It grows the bank downwards into
+the space the chatbox leaves, and this one widens it, so the two add room in
+different directions. The bank is held to the play area as the game reports it,
+which grows and shrinks with the chatbox, so the extra height is kept.
+
 **Fixed Resizable Hybrid** restyles the interface to look like fixed mode, and
 puts the bank inside a frame of its own that it holds to a set width. There is
 no room to widen the bank inside it, so this plugin stands aside and leaves the
