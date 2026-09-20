@@ -47,12 +47,17 @@ final class BankRoom
 	/** Widest the bank window may become before an ancestor would clip it. */
 	private final int limit;
 
-	private BankRoom(List<Widget> slots, List<Widget> chain, Widget viewport, int limit)
+	/** Whether the bank sits in a box another plugin keeps to its own size. */
+	private final boolean boxed;
+
+	private BankRoom(List<Widget> slots, List<Widget> chain, Widget viewport, int limit,
+		boolean boxed)
 	{
 		this.slots = slots;
 		this.chain = chain;
 		this.viewport = viewport;
 		this.limit = limit;
+		this.boxed = boxed;
 	}
 
 	@Nullable
@@ -77,17 +82,28 @@ final class BankRoom
 		return chain;
 	}
 
+	/**
+	 * Whether the bank is inside something that fills the height of the client
+	 * but not its width. The game never builds it that way, so it means a
+	 * plugin has restyled the interface and is placing the bank itself.
+	 */
+	boolean isBoxed()
+	{
+		return boxed;
+	}
+
 	int getLimit()
 	{
 		return limit;
 	}
 
 	/** Measures the chain from {@code window} up to the root of the tree. */
-	static BankRoom measure(Widget window, int canvasWidth)
+	static BankRoom measure(Widget window, int canvasWidth, int canvasHeight)
 	{
 		if (window == null || canvasWidth <= 0)
 		{
-			return new BankRoom(Collections.emptyList(), Collections.emptyList(), null, 0);
+			return new BankRoom(Collections.emptyList(), Collections.emptyList(), null, 0,
+				false);
 		}
 
 		List<Widget> chain = new ArrayList<>();
@@ -97,15 +113,17 @@ final class BankRoom
 		}
 
 		int[] widths = new int[chain.size()];
+		int[] heights = new int[chain.size()];
 		int[] modes = new int[chain.size()];
 		for (int i = 0; i < chain.size(); i++)
 		{
 			widths[i] = chain.get(i).getWidth();
+			heights[i] = chain.get(i).getHeight();
 			modes[i] = chain.get(i).getWidthMode();
 		}
 
-		BankChainPlan plan = BankChainPlan.of(widths, modes, canvasWidth);
-		int highestSlot = plan.getHighestSlot();
+		BankChainPlan plan = BankChainPlan.of(widths, heights, modes, canvasWidth,
+			canvasHeight);		int highestSlot = plan.getHighestSlot();
 
 		List<Widget> slots = new ArrayList<>();
 		for (int i = 0; i <= highestSlot; i++)
@@ -121,7 +139,8 @@ final class BankRoom
 
 		// Stop at the topmost slot. Anything above it is a tracking ancestor that
 		// must keep its own size: that one is the limit, not something to widen.
-		return new BankRoom(slots, chain.subList(0, highestSlot + 1), viewport, limit);
+		return new BankRoom(slots, chain.subList(0, highestSlot + 1), viewport, limit,
+			plan.isBoxed());
 	}
 
 	/** Guards against a malformed tree sending the walk into a long loop. */

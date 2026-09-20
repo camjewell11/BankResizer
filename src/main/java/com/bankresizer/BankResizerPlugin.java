@@ -143,6 +143,9 @@ public class BankResizerPlugin extends Plugin
 	 */
 	private boolean itemsLaidOut;
 
+	/** So the reason for standing down is said once, not every pass. */
+	private boolean reportedBoxed;
+
 	/**
 	 * How the game builds one entry of the potion store, read from a build of
 	 * its own. Offsets and an inset rather than positions, so they hold at any
@@ -343,8 +346,34 @@ public class BankResizerPlugin extends Plugin
 			return;
 		}
 
-		int columns = resolveColumns();
+		// Another plugin has restyled the interface and is holding the bank window
+		// to its own width. Widening it turns into a tug of war that it wins many
+		// times a second, leaving the items spread wider than the frame around
+		// them. Better to leave the bank alone than to fight for it.
+		if (room().isBoxed())
+		{
+			if (modified)
+			{
+				restoreLayout();
+				restoreAncestors();
+				spreadPotionEntries();
+				originalWidths.clear();
+				modified = false;
+			}
 
+			if (!reportedBoxed)
+			{
+				reportedBoxed = true;
+				log.debug("Leaving the bank alone: it is inside a box {} wide and {} tall,"
+					+ " on a {} wide client, so another plugin is placing it.",
+					room().getLimit(), room().getHeightLimit(), client.getCanvasWidth());
+			}
+
+			latchedColumns = BankLayout.VANILLA_COLUMNS;
+			return;
+		}
+
+		int columns = resolveColumns();
 		// Vanilla width and vanilla height together mean there is nothing to do.
 		// A row count on its own still has to be applied, so it cannot short
 		// circuit here just because the width is unchanged.
@@ -526,7 +555,8 @@ public class BankResizerPlugin extends Plugin
 		if (room == null)
 		{
 			room = BankRoom.measure(client.getWidget(InterfaceID.Bankmain.UNIVERSE),
-				client.getCanvasWidth());
+				client.getCanvasWidth(), client.getCanvasHeight());
+
 		}
 
 		return room;
@@ -1325,6 +1355,7 @@ public class BankResizerPlugin extends Plugin
 		resizedAncestors.clear();
 		vanillaSettingsRows = null;
 		itemsLaidOut = false;
+		reportedBoxed = false;
 		appliedRootWidth = -1;
 		room = null;
 		modified = false;
