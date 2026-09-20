@@ -124,3 +124,26 @@ bank is not among those named, and this plugin already moves bank widgets, so
 there is no obvious rule against it. That is an argument from the list being
 silent, not from permission, and it is a reviewer's judgement rather than
 something the text settles.
+
+## Following the chatbox without reopening the bank
+
+**Asked for:** nobody yet. Found while checking this against Expanded Bank.
+
+**Status:** known, and left alone on purpose.
+
+**What is known.** Opening or closing the chatbox changes the height of the play
+area without changing the canvas at all. The bank is laid out from a reading
+taken when it was opened, and the only thing watched for afterwards is a change
+in canvas size, so a chatbox toggle goes unnoticed and the bank is left laid out
+for a play area that is no longer that shape. Opening the bank again fixes it,
+because that takes a fresh reading.
+
+The same is true of anything else that changes the play area while the bank is
+open. Resizing the client is already handled, by giving up and going back to
+eight columns until the bank is next opened.
+
+**What it would take.** Watch the play area rather than the canvas, and lay out
+again when it changes. The pieces are there: the play area is measured already.
+The care needed is in not doing it on every frame, and in deciding whether to
+relayout in place or to step back to eight columns as the client resize does.
+
