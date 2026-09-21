@@ -85,6 +85,13 @@ Tested in resizable mode with and without stretched mode, across client sizes
 from small windows to full screen, and while resizing the client with the bank
 open. Fixed mode is left alone.
 
+**Overlays from other plugins** are drawn where they were put, which for some of
+them is on top of any interface. A wider bank reaches into space that used to be
+empty, so an overlay that never met the bank before may now sit over it. Which
+plugins draw above interfaces is their own choice and nothing here can change
+it. Hold alt and drag the overlay somewhere the bank does not reach, or turn it
+off while banking.
+
 **Expanded Bank** works alongside this one. It grows the bank downwards into
 the space the chatbox leaves, and this one widens it, so the two add room in
 different directions.
