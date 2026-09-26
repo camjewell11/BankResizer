@@ -96,9 +96,9 @@ off while banking.
 the space the chatbox leaves, and this one widens it, so the two add room in
 different directions.
 
-Opening or closing the chatbox while the bank is open leaves the bank looking
-odd until it is opened again, the same as resizing the client does. Close the
-bank and open it and it will be right.
+Opening or closing the chatbox while the bank is open, which asking how many to
+withdraw also does, hands that space back and forth. The bank follows it either
+way, without needing to be opened again.
 
 **Fixed Resizable Hybrid** restyles the interface to look like fixed mode, and
 puts the bank inside a frame of its own that it holds to a set width. There is

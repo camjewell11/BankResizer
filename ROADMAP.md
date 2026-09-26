@@ -108,23 +108,22 @@ something the text settles.
 
 ## Following the chatbox without reopening the bank
 
-**Asked for:** nobody yet. Found while checking this against Expanded Bank.
+**Status:** done.
 
-**Status:** known, and left alone on purpose.
+**What it was.** The bank is given the height of the play area, and was given it
+once, when the bank was opened. Nothing afterwards was watched for except the
+client being resized, so anything else that changed the play area went unnoticed
+and the bank kept a height that no longer fitted. Asking how many to withdraw
+was the clearest case: the prompt puts the chatbox up, the space is taken back,
+and the bank was left hanging over it.
 
-**What is known.** Opening or closing the chatbox changes the height of the play
-area without changing the canvas at all. The bank is laid out from a reading
-taken when it was opened, and the only thing watched for afterwards is a change
-in canvas size, so a chatbox toggle goes unnoticed and the bank is left laid out
-for a play area that is no longer that shape. Opening the bank again fixes it,
-because that takes a fresh reading.
+**What was done.** The height of the play area counts towards whether the bank
+is already laid out, so a change to it is followed. The bank is also laid out
+again in the cycle the chatbox goes up, rather than waiting for the next size
+check, which would leave it wrong for up to a tick.
 
-The same is true of anything else that changes the play area while the bank is
-open. Resizing the client is already handled, by giving up and going back to
-eight columns until the bank is next opened.
+Only plugins that grow the bank into the chatbox space make this visible. On its
+own the game keeps the bank inside the play area and the chatbox plays no part.
 
-**What it would take.** Watch the play area rather than the canvas, and lay out
-again when it changes. The pieces are there: the play area is measured already.
-The care needed is in not doing it on every frame, and in deciding whether to
-relayout in place or to step back to eight columns as the client resize does.
-
+Whether the space is taken back at all is the other plugin's to decide, and it
+is not consistent from one prompt to the next. Both ways are followed.
