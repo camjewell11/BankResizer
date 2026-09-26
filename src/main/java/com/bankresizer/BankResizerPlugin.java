@@ -167,6 +167,12 @@ public class BankResizerPlugin extends Plugin
 	 */
 	private int appliedRootWidth = -1;
 
+	/**
+	 * Height of the play area the bank was last laid out for. Anything that
+	 * changes it, without the client itself being resized, has to be followed.
+	 */
+	private int appliedPlayAreaHeight = -1;
+
 	/** A widget's width as it was before this plugin touched it. */
 	private static final class WidgetSize
 	{
@@ -266,6 +272,16 @@ public class BankResizerPlugin extends Plugin
 		if (event.getScriptId() == ScriptID.POTIONSTORE_BUILD)
 		{
 			savePotionLayout();
+		}
+
+		// Putting the chatbox up, as asking how many to withdraw does, takes the
+		// space back from anything that had grown the bank into it. Waiting for
+		// the next size check to notice leaves the bank over the chatbox for up to
+		// a tick, so it is laid out again in the same cycle it was put up.
+		if (event.getScriptId() == ScriptID.CHAT_PROMPT_INIT
+			|| event.getScriptId() == ScriptID.BUILD_CHATBOX)
+		{
+			applyLayout();
 		}
 
 		// bankmain_build calls bankmain_finishbuilding as its final statement, so
@@ -453,6 +469,7 @@ public class BankResizerPlugin extends Plugin
 		trackSettingsRows();
 
 		appliedColumns = columns;
+		appliedPlayAreaHeight = room().getHeightLimit();
 		appliedCanvasWidth = canvasWidth;
 		appliedCanvasHeight = canvasHeight;
 	}
@@ -471,7 +488,14 @@ public class BankResizerPlugin extends Plugin
 			&& canvasWidth == appliedCanvasWidth
 			&& items.getOriginalWidth() == targetWidth
 			&& root != null
-			&& root.getOriginalWidth() == appliedRootWidth;
+			&& root.getOriginalWidth() == appliedRootWidth
+
+			// The bank is given the height of the play area, so it has to be given it
+			// again when that changes. It changes without the client being resized:
+			// a plugin that grows the bank into the space the chatbox leaves gives it
+			// back as soon as anything puts the chatbox up, such as the prompt for
+			// how many to withdraw, and the bank was left hanging over it.
+			&& room().getHeightLimit() == appliedPlayAreaHeight;
 	}
 
 	private void restoreLayout()
@@ -1357,6 +1381,7 @@ public class BankResizerPlugin extends Plugin
 		itemsLaidOut = false;
 		reportedBoxed = false;
 		appliedRootWidth = -1;
+		appliedPlayAreaHeight = -1;
 		room = null;
 		modified = false;
 		latchedColumns = -1;
